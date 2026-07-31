@@ -1,0 +1,675 @@
+/* [project]/src/app/globals.css [app-client] (css) */
+:root {
+  --ink: #102a43;
+  --blue: #1479c9;
+  --muted: #526b82;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  color: var(--ink);
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+nav {
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1150px;
+  height: 76px;
+  margin: auto;
+  padding: 0 24px;
+  display: flex;
+}
+
+.brand {
+  letter-spacing: -.05em;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.nav-links, .actions {
+  align-items: center;
+  gap: 24px;
+  font-weight: 700;
+  display: flex;
+}
+
+.button {
+  background: var(--blue);
+  color: #fff;
+  border-radius: 9px;
+  padding: 14px 21px;
+  display: inline-block;
+  box-shadow: 0 8px 20px #1479c933;
+}
+
+.compact {
+  box-shadow: none;
+  padding: 10px 15px;
+  font-size: .9rem;
+}
+
+.hero {
+  background: linear-gradient(120deg, #eff9ff, #fff 70%);
+  grid-template-columns: 1.25fr .75fr;
+  align-items: center;
+  gap: 70px;
+  min-height: 525px;
+  padding: 86px max(24px, 50% - 550px);
+  display: grid;
+}
+
+.eyebrow {
+  color: var(--blue);
+  letter-spacing: .13em;
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+h1 {
+  letter-spacing: -.06em;
+  max-width: 650px;
+  margin: 15px 0 19px;
+  font-size: clamp(2.6rem, 5vw, 4.5rem);
+  line-height: 1.03;
+}
+
+.lead {
+  max-width: 600px;
+  color: var(--muted);
+  font-size: 1.12rem;
+  line-height: 1.7;
+}
+
+.actions {
+  margin-top: 30px;
+}
+
+.discover {
+  color: var(--blue);
+}
+
+.hero aside {
+  background: #fff;
+  border: 1px solid #d9ebf6;
+  border-radius: 18px;
+  padding: 30px;
+  box-shadow: 0 25px 65px #102a4318;
+}
+
+.hero aside h2 {
+  margin: 20px 0 8px;
+  font-size: 1.45rem;
+}
+
+.hero aside p {
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.hero aside span {
+  color: #167347;
+  margin-top: 25px;
+  font-size: .83rem;
+  font-weight: 700;
+  display: block;
+}
+
+.cards {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+  max-width: 1100px;
+  margin: auto;
+  padding: 76px 24px;
+  display: grid;
+}
+
+.cards article {
+  border: 1px solid #e2ebf1;
+  border-radius: 13px;
+  padding: 25px;
+}
+
+.cards h2 {
+  font-size: 1.15rem;
+}
+
+.cards p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.symbol {
+  width: 36px;
+  height: 36px;
+  color: var(--blue);
+  background: #edf8fe;
+  border-radius: 10px;
+  place-items: center;
+  font-size: 1.4rem;
+  font-weight: 700;
+  display: grid;
+}
+
+.authPage {
+  grid-template-columns: minmax(520px, 1.05fr) minmax(420px, .95fr);
+  min-height: 100vh;
+  display: grid;
+}
+
+.authPanel {
+  padding: 38px 9%;
+}
+
+.authContent {
+  width: min(100%, 420px);
+  margin: 105px auto 0;
+}
+
+.authContent h1 {
+  margin: 12px 0;
+  font-size: clamp(2.5rem, 4vw, 3.4rem);
+  line-height: 1.08;
+}
+
+.authText {
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.65;
+}
+
+.authContent form {
+  margin-top: 34px;
+}
+
+.authContent label {
+  margin: 20px 0 8px;
+  font-size: .9rem;
+  font-weight: 700;
+  display: block;
+}
+
+.authContent input {
+  width: 100%;
+  height: 50px;
+  font: inherit;
+  border: 1px solid #cbd9e5;
+  border-radius: 9px;
+  padding: 0 14px;
+}
+
+.authButton {
+  cursor: pointer;
+  width: 100%;
+  height: 50px;
+  font: inherit;
+  border: 0;
+  margin-top: 27px;
+}
+
+.authAside {
+  color: #fff;
+  background: linear-gradient(145deg, #102a43, #1479c9);
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 72px;
+  display: flex;
+}
+
+.authAside .eyebrow {
+  color: #a9dcff;
+}
+
+.authAside h2 {
+  max-width: 490px;
+  margin: 16px 0;
+  font-size: clamp(2rem, 3vw, 3.3rem);
+  line-height: 1.12;
+}
+
+.authAside p {
+  color: #e1f1fb;
+  max-width: 470px;
+  line-height: 1.7;
+}
+
+.authContent select {
+  width: 100%;
+  height: 50px;
+  font: inherit;
+  background: #fff;
+  border: 1px solid #cbd9e5;
+  border-radius: 9px;
+  padding: 0 14px;
+}
+
+.formRow {
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  display: grid;
+}
+
+.formError {
+  color: #b42318;
+  margin: 14px 0 0;
+  font-size: .9rem;
+}
+
+.formHint {
+  color: var(--muted);
+  text-align: center;
+}
+
+.formHint a {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.authButton:disabled {
+  cursor: wait;
+  opacity: .7;
+}
+
+.pageState {
+  text-align: center;
+  max-width: 600px;
+  margin: 120px auto;
+  padding: 24px;
+}
+
+.emptyText {
+  color: var(--muted);
+  font-size: .9rem;
+}
+
+.logout {
+  cursor: pointer;
+  text-align: left;
+  background: none;
+  border: 0;
+}
+
+.contentPage {
+  max-width: 1120px;
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 0 24px 64px;
+}
+
+.simpleHeader {
+  padding: 0;
+}
+
+.simpleHeader nav {
+  gap: 22px;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  font-size: .9rem;
+  font-weight: 700;
+}
+
+.pageHeading {
+  padding: 60px 0 30px;
+}
+
+.pageHeading h1 {
+  margin: 10px 0;
+  font-size: clamp(2.2rem, 4vw, 3.5rem);
+}
+
+.pageHeading p:not(.eyebrow) {
+  color: var(--muted);
+}
+
+.listCard {
+  background: #fff;
+  border: 1px solid #e0eaf0;
+  border-radius: 14px;
+  padding: 26px;
+}
+
+.listCard h2 {
+  margin: 0 0 18px;
+  font-size: 1.15rem;
+}
+
+.appointmentRow {
+  border-top: 1px solid #edf2f6;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 19px 0;
+  display: flex;
+}
+
+.appointmentRow:first-child {
+  border-top: 0;
+}
+
+.appointmentRow h2 {
+  margin: 0 0 7px;
+  font-size: 1rem;
+}
+
+.appointmentRow p, .appointmentRow small {
+  color: var(--muted);
+  margin: 4px 0;
+  display: block;
+}
+
+.secondaryButton {
+  color: #b42318;
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #d6e1ea;
+  border-radius: 8px;
+  padding: 10px 13px;
+  font-weight: 700;
+}
+
+.recordGrid {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  display: grid;
+}
+
+.recordItem {
+  border-top: 1px solid #edf2f6;
+  padding: 15px 0;
+}
+
+.recordItem p, .recordItem small {
+  color: var(--muted);
+  margin: 6px 0 0;
+  font-size: .88rem;
+  line-height: 1.45;
+  display: block;
+}
+
+@media (max-width: 760px) {
+  .formRow, .recordGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .simpleHeader {
+    align-items: flex-start;
+    height: auto;
+    padding: 22px 0;
+  }
+
+  .simpleHeader nav {
+    text-align: right;
+    gap: 10px;
+    display: grid;
+  }
+
+  .appointmentRow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.dashboard {
+  background: #f5f9fc;
+  grid-template-columns: 255px 1fr;
+  min-height: 100vh;
+  display: grid;
+}
+
+.dashboardSidebar {
+  color: #d7e5ef;
+  background: #102a43;
+  min-height: 100vh;
+  padding: 32px 20px;
+}
+
+.dashboardSidebar .brand {
+  color: #fff;
+  margin: 0 14px 52px;
+  display: block;
+}
+
+.dashboardMenu {
+  gap: 8px;
+  display: grid;
+}
+
+.dashboardMenu a {
+  border-radius: 8px;
+  padding: 13px 14px;
+  font-size: .93rem;
+  font-weight: 600;
+}
+
+.dashboardMenu a:hover, .dashboardMenu .active {
+  color: #fff;
+  background: #ffffff1c;
+}
+
+.logout {
+  color: #a9c4d8;
+  margin: 45px 14px 0;
+  font-size: .9rem;
+  font-weight: 700;
+  display: block;
+}
+
+.dashboardMain {
+  width: 100%;
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: 52px;
+}
+
+.dashboardHeader {
+  justify-content: space-between;
+  align-items: center;
+  display: flex;
+}
+
+.dashboardHeader h1 {
+  margin: 10px 0 6px;
+  font-size: 2.3rem;
+}
+
+.dashboardHeader p:not(.eyebrow) {
+  color: #627d98;
+  margin: 0;
+}
+
+.patientAvatar {
+  color: #fff;
+  background: #1479c9;
+  border-radius: 50%;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  font-weight: 800;
+  display: grid;
+}
+
+.stats {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin: 35px 0 25px;
+  display: grid;
+}
+
+.stats article, .dashboardCard {
+  background: #fff;
+  border: 1px solid #e0eaf0;
+  border-radius: 13px;
+  padding: 24px;
+}
+
+.stats span, .stats small {
+  color: #627d98;
+  display: block;
+}
+
+.stats span {
+  font-size: .88rem;
+  font-weight: 700;
+}
+
+.stats strong {
+  margin: 9px 0 5px;
+  font-size: 2rem;
+  display: block;
+}
+
+.stats small {
+  font-size: .78rem;
+}
+
+.dashboardGrid {
+  grid-template-columns: 1.15fr .85fr;
+  gap: 20px;
+  display: grid;
+}
+
+.cardTitle {
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+  display: flex;
+}
+
+.cardTitle h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.cardTitle a {
+  color: var(--blue);
+  font-size: .85rem;
+  font-weight: 700;
+}
+
+.appointment, .prescription {
+  border-top: 1px solid #edf2f6;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 0;
+  display: flex;
+}
+
+.appointment h3, .prescription h3 {
+  margin: 0 0 5px;
+  font-size: .93rem;
+}
+
+.appointment p, .prescription p {
+  color: #627d98;
+  margin: 0;
+  font-size: .84rem;
+}
+
+.dateBox {
+  width: 50px;
+  min-width: 50px;
+  color: var(--blue);
+  text-align: center;
+  background: #edf8fe;
+  border-radius: 8px;
+  padding: 7px 3px;
+}
+
+.dateBox strong, .dateBox span {
+  display: block;
+}
+
+.dateBox strong {
+  font-size: 1.1rem;
+}
+
+.dateBox span {
+  text-transform: uppercase;
+  font-size: .7rem;
+  font-weight: 700;
+}
+
+.medicineIcon {
+  width: 41px;
+  height: 41px;
+  color: var(--blue);
+  background: #edf8fe;
+  border-radius: 10px;
+  place-items: center;
+  font-size: .8rem;
+  font-weight: 800;
+  display: grid;
+}
+
+@media (max-width: 950px) {
+  .authPage, .dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .authAside {
+    display: none;
+  }
+
+  .authPanel {
+    padding: 30px 24px;
+  }
+
+  .authContent {
+    margin-top: 70px;
+  }
+
+  .dashboardSidebar {
+    min-height: auto;
+  }
+
+  .dashboardSidebar .brand {
+    margin-bottom: 22px;
+  }
+
+  .dashboardMenu {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .logout {
+    margin-top: 24px;
+  }
+
+  .dashboardMain {
+    padding: 32px 24px;
+  }
+
+  .stats, .dashboardGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 40px;
+    padding-top: 60px;
+    padding-bottom: 60px;
+  }
+
+  .cards {
+    grid-template-columns: 1fr;
+  }
+
+  .nav-links {
+    gap: 12px;
+    font-size: .82rem;
+  }
+}
+
+/*# sourceMappingURL=src_app_globals_162hn9o.css.map*/
