@@ -19,6 +19,7 @@ class UserRole(str, enum.Enum):
     patient = "patient"
     doctor = "doctor"
     clinic_admin = "clinic_admin"
+    secretary = "secretary"
     super_admin = "super_admin"
 
 
@@ -73,6 +74,7 @@ class User(Base):
 
     patient: Mapped["Patient"] = relationship(back_populates="user", uselist=False)
     doctor: Mapped["Doctor"] = relationship(back_populates="user", uselist=False)
+    secretary_profile: Mapped["Secretary"] = relationship(back_populates="user", uselist=False)
 
 
 class Patient(Base):
@@ -112,6 +114,17 @@ class Clinic(Base):
     name: Mapped[str] = mapped_column(String(255))
     address: Mapped[str | None] = mapped_column(Text)
     phone: Mapped[str | None] = mapped_column(String(30))
+
+
+class Secretary(Base):
+    __tablename__ = "secretaries"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id"), unique=True)
+    clinic_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), ForeignKey("clinics.id"))
+    first_name: Mapped[str] = mapped_column(String(100))
+    last_name: Mapped[str] = mapped_column(String(100))
+    user: Mapped["User"] = relationship(back_populates="secretary_profile")
 
 
 class RecordAccessGrant(Base):

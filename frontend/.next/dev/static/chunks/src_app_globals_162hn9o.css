@@ -299,6 +299,69 @@ h1 {
   border: 0;
 }
 
+.roleChoices {
+  gap: 12px;
+  margin-top: 28px;
+  display: grid;
+}
+
+.roleCard {
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid #d7e5ef;
+  border-radius: 11px;
+  gap: 6px;
+  padding: 17px;
+  display: grid;
+}
+
+.roleCard:hover {
+  border-color: var(--blue);
+  background: #f4faff;
+}
+
+.roleCard span {
+  color: var(--muted);
+  font-size: .88rem;
+  line-height: 1.45;
+}
+
+.successText {
+  color: #157347;
+  font-weight: 700;
+}
+
+.roleTabs {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+  margin: 24px 0 4px;
+  display: grid;
+}
+
+.roleTabs button {
+  color: var(--muted);
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #d7e5ef;
+  border-radius: 8px;
+  padding: 10px 6px;
+  font-size: .8rem;
+  font-weight: 700;
+}
+
+.roleTabs .selected {
+  border-color: var(--blue);
+  color: #fff;
+  background: var(--blue);
+}
+
+.selectedRole {
+  color: var(--blue);
+  margin: 18px 0 -5px;
+  font-size: .88rem;
+  font-weight: 700;
+}
+
 .contentPage {
   max-width: 1120px;
   min-height: 100vh;

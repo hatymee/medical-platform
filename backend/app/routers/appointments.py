@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import require_role
 from app.models.models import User, Appointment, AppointmentStatus
-from app.schemas.schemas import AppointmentCreate, AppointmentOut
+from app.schemas.schemas import AppointmentCreate, AppointmentOut, SecretariatAppointmentCreate
 
 router = APIRouter(prefix="/appointments", tags=["appointments"])
 
@@ -26,6 +26,17 @@ def create_appointment(
     db.commit()
     db.refresh(appointment)
     # TODO V2 : déclencher l'envoi de la confirmation email + rappels J-1 / H-2
+    return appointment
+
+
+@router.post("/secretariat", response_model=AppointmentOut)
+def create_appointment_for_patient(
+    payload: SecretariatAppointmentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("secretary", "clinic_admin")),
+):
+    appointment = Appointment(patient_id=payload.patient_id, doctor_id=payload.doctor_id, scheduled_at=payload.scheduled_at, reason=payload.reason, status=AppointmentStatus.scheduled)
+    db.add(appointment); db.commit(); db.refresh(appointment)
     return appointment
 
 

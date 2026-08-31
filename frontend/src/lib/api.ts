@@ -1,7 +1,7 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001/api/v1";
 
 export type TokenResponse = { access_token: string; token_type: string; role: string };
-export type Patient = { id: string; first_name: string; last_name: string; date_of_birth: string; sex: string | null; blood_group: string; address: string | null };
+export type Patient = { id: string; first_name: string; last_name: string; date_of_birth: string; sex: string | null; blood_group: string; national_id: string | null; address: string | null };
 export type Appointment = { id: string; doctor_id: string; patient_id: string; scheduled_at: string; status: string; reason: string | null };
 export type Consultation = { id: string; patient_id: string; doctor_id: string; consultation_date: string; reason: string | null; notes: string | null };
 export type Prescription = { id: string; consultation_id: string; medication_name: string; dosage: string | null; duration: string | null; instructions: string | null };

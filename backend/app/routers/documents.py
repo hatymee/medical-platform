@@ -63,12 +63,13 @@ def upload_document(
     title: str = Form(...),
     document_date: str = Form(...),
     file: UploadFile = File(...),
+    patient_id: str | None = Form(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("patient", "doctor")),
+    current_user: User = Depends(require_role("patient", "doctor", "secretary")),
 ):
-    patient_id = current_user.patient.id if current_user.role == "patient" else None
+    patient_id = current_user.patient.id if current_user.role == "patient" else patient_id
     if patient_id is None:
-        raise HTTPException(status_code=400, detail="Seul le patient peut associer un document a son dossier pour l'instant")
+        raise HTTPException(status_code=400, detail="Le patient doit être indiqué")
 
     file_url = f"local://uploads/{patient_id}/{file.filename}"
 

@@ -1,0 +1,14 @@
+﻿# Python
+__pycache__/
+*.pyc
+venv/
+.env
+
+# Node / Next.js
+node_modules/
+.next/
+.npm-cache/
+
+# Divers
+*.log
+.DS_Store

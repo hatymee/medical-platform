@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.deps import require_role
 from app.core.database import get_db
 from sqlalchemy.orm import Session
-from app.models.models import User
-from app.schemas.schemas import PatientProfile, PatientProfileUpdate
+from app.models.models import User, Patient
+from app.schemas.schemas import PatientProfile, PatientProfileUpdate, SecretaryPatientUpdate
 
 router = APIRouter(prefix="/patients", tags=["patients"])
 
@@ -26,4 +26,29 @@ def update_my_profile(
         setattr(patient, field, value)
     db.commit()
     db.refresh(patient)
+    return patient
+
+
+@router.get("/search", response_model=list[PatientProfile])
+def search_patients(
+    term: str = Query(min_length=2),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("secretary", "doctor", "clinic_admin")),
+):
+    return db.query(Patient).filter((Patient.national_id.ilike(f"%{term}%")) | (Patient.last_name.ilike(f"%{term}%"))).limit(20).all()
+
+
+@router.patch("/{patient_id}/administrative", response_model=PatientProfile)
+def update_patient_administrative(
+    patient_id: str,
+    payload: SecretaryPatientUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("secretary", "clinic_admin")),
+):
+    patient = db.get(Patient, patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient introuvable")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(patient, field, value)
+    db.commit(); db.refresh(patient)
     return patient

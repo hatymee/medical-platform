@@ -34,7 +34,7 @@ def my_invoices(db: Session = Depends(get_db), current_user: User = Depends(requ
 
 
 @router.post("/invoices/{invoice_id}/payments", response_model=PaymentOut, status_code=201)
-def record_payment(invoice_id: str, payload: PaymentCreate, db: Session = Depends(get_db), current_user: User = Depends(require_role("doctor", "clinic_admin"))):
+def record_payment(invoice_id: str, payload: PaymentCreate, db: Session = Depends(get_db), current_user: User = Depends(require_role("doctor", "clinic_admin", "secretary"))):
     invoice = db.get(Invoice, invoice_id)
     if not invoice: raise HTTPException(status_code=404, detail="Facture introuvable")
     if payload.amount <= 0: raise HTTPException(status_code=400, detail="Le montant doit être positif")

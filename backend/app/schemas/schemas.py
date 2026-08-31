@@ -19,8 +19,14 @@ class DoctorRegister(BaseModel):
     password: str
     first_name: str
     last_name: str
-    specialty: str | None = None
-    license_number: str | None = None
+
+
+class SecretaryRegister(BaseModel):
+    email: EmailStr
+    password: str
+    first_name: str
+    last_name: str
+    clinic_id: str | None = None
 
 
 class LoginRequest(BaseModel):
@@ -43,6 +49,7 @@ class PatientProfile(BaseModel):
     date_of_birth: date
     sex: str | None
     blood_group: str
+    national_id: str | None
     address: str | None
 
     class Config:
@@ -55,7 +62,17 @@ class PatientProfileUpdate(BaseModel):
     last_name: str | None = None
     sex: str | None = None
     blood_group: str | None = None
+    national_id: str | None = None
     address: str | None = None
+
+
+class SecretaryPatientUpdate(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
+    national_id: str | None = None
+    address: str | None = None
+    sex: str | None = None
+    blood_group: str | None = None
 
 
 # --------------------------- CLINICS / DOCTORS ---------------------------
@@ -138,6 +155,10 @@ class AppointmentCreate(BaseModel):
     doctor_id: str
     scheduled_at: datetime
     reason: str | None = None
+
+
+class SecretariatAppointmentCreate(AppointmentCreate):
+    patient_id: str
 
 
 class AppointmentOut(BaseModel):
