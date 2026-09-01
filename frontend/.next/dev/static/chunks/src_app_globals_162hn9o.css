@@ -292,13 +292,6 @@ h1 {
   font-size: .9rem;
 }
 
-.logout {
-  cursor: pointer;
-  text-align: left;
-  background: none;
-  border: 0;
-}
-
 .roleChoices {
   gap: 12px;
   margin-top: 28px;
@@ -499,33 +492,52 @@ h1 {
 
 .dashboardSidebar .brand {
   color: #fff;
-  margin: 0 14px 52px;
+  margin: 0 14px 40px;
   display: block;
 }
 
-.dashboardMenu {
+.dashboardSidebar nav.dashboardMenu {
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
   gap: 8px;
-  display: grid;
+  max-width: none;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  display: flex;
 }
 
-.dashboardMenu a {
+.dashboardMenu a, .dashboardSidebar .logout {
+  width: 100%;
+  font: inherit;
+  color: #d7e5ef;
+  cursor: pointer;
+  text-align: left;
+  background: none;
+  border: 0;
   border-radius: 8px;
   padding: 13px 14px;
   font-size: .93rem;
   font-weight: 600;
+  transition: all .2s;
+  display: block;
 }
 
-.dashboardMenu a:hover, .dashboardMenu .active {
+.dashboardMenu a:hover, .dashboardSidebar .logout:hover {
   color: #fff;
   background: #ffffff1c;
 }
 
-.logout {
-  color: #a9c4d8;
-  margin: 45px 14px 0;
-  font-size: .9rem;
-  font-weight: 700;
-  display: block;
+.dashboardMenu a.active, .dashboardSidebar .logout:active, .dashboardSidebar .logout:focus {
+  color: #fff;
+  background: #ffffff2b;
+  outline: none;
+  box-shadow: 0 4px 12px #00000040;
+}
+
+.dashboardSidebar .logout {
+  margin-top: 0;
 }
 
 .dashboardMain {
@@ -700,12 +712,13 @@ h1 {
     margin-bottom: 22px;
   }
 
-  .dashboardMenu {
+  .dashboardSidebar nav.dashboardMenu {
     grid-template-columns: repeat(2, 1fr);
+    display: grid;
   }
 
-  .logout {
-    margin-top: 24px;
+  .dashboardSidebar .logout {
+    margin-top: 0;
   }
 
   .dashboardMain {
@@ -733,6 +746,24 @@ h1 {
     gap: 12px;
     font-size: .82rem;
   }
+}
+
+.card, .roleCard, .selectionCard {
+  transition: transform .2s, box-shadow .2s, border-color .2s;
+}
+
+.card:hover, .roleCard:hover, .selectionCard:hover {
+  border-color: var(--blue);
+  box-shadow: 0 10px 25px -5gba(0, 0, 0, .08);
+  cursor: pointer;
+  transform: translateY(-3px);
+}
+
+.sidebarBlue, .signupSidebar {
+  flex-direction: column;
+  justify-content: center;
+  padding: 3rem;
+  display: flex;
 }
 
 /*# sourceMappingURL=src_app_globals_162hn9o.css.map*/

@@ -172,6 +172,12 @@ class AppointmentOut(BaseModel):
     class Config:
         from_attributes = True
 
+class AppointmentUpdate(BaseModel):
+    scheduled_at: datetime | None = None
+    doctor_id: str | None = None
+    status: str | None = None
+    reason: str | None = None       
+
 # --------------------------- CONSULTATIONS / PRESCRIPTIONS ---------------------------
 
 class ConsultationCreate(BaseModel):

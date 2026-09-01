@@ -1,13 +1,6 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
   "/connexion/page": "app/connexion/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
   "/doctor/dashboard/page": "app/doctor/dashboard/page.js",
   "/doctor/patients/page": "app/doctor/patients/page.js",
-  "/dossier/page": "app/dossier/page.js",
-  "/inscription-professionnel/page": "app/inscription-professionnel/page.js",
-  "/inscription/page": "app/inscription/page.js",
-  "/page": "app/page.js",
-  "/professionnel/page": "app/professionnel/page.js",
-  "/secretariat/page": "app/secretariat/page.js"
+  "/professionnel/page": "app/professionnel/page.js"
 }
