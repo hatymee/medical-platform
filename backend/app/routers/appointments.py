@@ -19,27 +19,34 @@ router = APIRouter(prefix="/appointments", tags=["appointments"])
 # 1. Vérifier la disponibilité des créneaux pour une date et un médecin
 @router.get("/available-slots/")
 def get_available_slots(
-    doctor_id: str,
     target_date: date = Query(...),
     db: Session = Depends(get_db),
 ):
     working_hours = [
-        "09:00", "09:30", "10:00", "10:30", 
+        "09:00", "09:30", "10:00", "10:30",
         "11:00", "11:30", "15:00", "15:30", "16:00"
     ]
-    
+
     existing_appointments = db.query(Appointment).filter(
-        Appointment.doctor_id == doctor_id,
         Appointment.scheduled_at >= datetime.combine(target_date, time.min),
         Appointment.scheduled_at <= datetime.combine(target_date, time.max),
         Appointment.status != AppointmentStatus.cancelled
     ).all()
 
-    booked_slots = [apt.scheduled_at.strftime("%H:%M") for apt in existing_appointments]
-    available_slots = [slot for slot in working_hours if slot not in booked_slots]
-    
-    return {"date": target_date, "available_slots": available_slots}
+    booked_slots = [
+        appointment.scheduled_at.strftime("%H:%M")
+        for appointment in existing_appointments
+    ]
 
+    available_slots = [
+        slot for slot in working_hours
+        if slot not in booked_slots
+    ]
+
+    return {
+        "date": target_date,
+        "available_slots": available_slots
+    }
 
 # 2. Création par le patient
 @router.post("/", response_model=AppointmentOut)
@@ -70,7 +77,7 @@ def create_appointment_for_patient(
 ):
     appointment = Appointment(
         patient_id=payload.patient_id, 
-        doctor_id=payload.doctor_id, 
+        
         scheduled_at=payload.scheduled_at, 
         reason=payload.reason, 
         status=AppointmentStatus.scheduled
@@ -153,3 +160,10 @@ def delete_appointment(
     db.delete(appointment)
     db.commit()
     return None
+
+@router.get("/", response_model=list[AppointmentOut])
+def list_all_appointments(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("secretary", "clinic_admin")),
+):
+    return db.query(Appointment).order_by(Appointment.scheduled_at.asc()).all()

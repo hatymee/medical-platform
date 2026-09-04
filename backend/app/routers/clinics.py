@@ -67,3 +67,11 @@ def update_my_doctor_profile(
     db.commit()
     db.refresh(doctor)
     return doctor
+
+
+@router.get("/doctors", response_model=list[DoctorProfile])
+def list_all_doctors(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("secretary", "clinic_admin", "patient")),
+):
+    return db.query(Doctor).order_by(Doctor.last_name).all()

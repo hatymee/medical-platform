@@ -159,11 +159,12 @@ class AppointmentCreate(BaseModel):
 
 class SecretariatAppointmentCreate(AppointmentCreate):
     patient_id: str
-
+    scheduled_at: datetime
+    reason: str | None = None
 
 class AppointmentOut(BaseModel):
     id: str
-    doctor_id: str
+    
     patient_id: str
     scheduled_at: datetime
     status: str

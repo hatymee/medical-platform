@@ -1,6 +1,3 @@
 {
-  "/connexion/page": "app/connexion/page.js",
-  "/doctor/dashboard/page": "app/doctor/dashboard/page.js",
-  "/doctor/patients/page": "app/doctor/patients/page.js",
-  "/professionnel/page": "app/professionnel/page.js"
+  "/secretariat/page": "app/secretariat/page.js"
 }

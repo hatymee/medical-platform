@@ -5,6 +5,8 @@ from app.core.database import get_db
 from sqlalchemy.orm import Session
 from app.models.models import User, Patient
 from app.schemas.schemas import PatientProfile, PatientProfileUpdate, SecretaryPatientUpdate
+from app.models.models import Patient as PatientModel
+
 
 router = APIRouter(prefix="/patients", tags=["patients"])
 
@@ -52,3 +54,10 @@ def update_patient_administrative(
         setattr(patient, field, value)
     db.commit(); db.refresh(patient)
     return patient
+
+@router.get("/", response_model=list[PatientProfile])
+def list_patients(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("secretary", "clinic_admin")),    
+):
+    return db.query(Patient).order_by(Patient.last_name).all()
