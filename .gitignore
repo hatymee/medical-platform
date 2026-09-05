@@ -12,3 +12,15 @@ node_modules/
 # Divers
 *.log
 .DS_Store
+
+.next/
+__pycache__/
+*.pyc
+venv/
+
+.next/
+__pycache__/
+*.pyc
+venv/
+.env
+.env.local

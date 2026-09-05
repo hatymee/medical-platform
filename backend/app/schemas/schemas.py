@@ -115,7 +115,7 @@ class DoctorProfileUpdate(BaseModel):
 # --------------------------- ACCESS GRANTS ---------------------------
 
 class AccessGrantRequest(BaseModel):
-    patient_email: EmailStr  # le médecin saisit l'email/identifiant du patient
+    patient_email: EmailStr
 
 
 class AccessGrantRespond(BaseModel):
@@ -159,13 +159,12 @@ class AppointmentCreate(BaseModel):
 
 class SecretariatAppointmentCreate(AppointmentCreate):
     patient_id: str
-    scheduled_at: datetime
-    reason: str | None = None
+
 
 class AppointmentOut(BaseModel):
     id: str
-    
     patient_id: str
+    doctor_id: str
     scheduled_at: datetime
     status: str
     reason: str | None
@@ -173,11 +172,13 @@ class AppointmentOut(BaseModel):
     class Config:
         from_attributes = True
 
+
 class AppointmentUpdate(BaseModel):
     scheduled_at: datetime | None = None
     doctor_id: str | None = None
     status: str | None = None
-    reason: str | None = None       
+    reason: str | None = None
+
 
 # --------------------------- CONSULTATIONS / PRESCRIPTIONS ---------------------------
 
