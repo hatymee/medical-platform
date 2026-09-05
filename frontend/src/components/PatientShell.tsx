@@ -5,10 +5,16 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import "./patient-shell.css";
 
-const NAV = [
+export const PATIENT_NAV = [
   { href: "/dashboard", label: "Tableau de bord" },
   { href: "/dossier", label: "Mon dossier médical" },
   { href: "/rendez-vous", label: "Mes rendez-vous" },
+];
+
+export const DOCTOR_NAV = [
+  { href: "/doctor/dashboard", label: "Tableau de bord" },
+  { href: "/doctor/patients", label: "Patients autorisés" },
+  { href: "/professionnel", label: "Chiffre d'affaires" },
 ];
 
 export function parseLocal(iso: string) {
@@ -27,6 +33,9 @@ export function clock(iso: string) {
 
 export default function PatientShell({
   active,
+  nav = PATIENT_NAV,
+  home = "/dashboard",
+  roleLabel = "Patient",
   eyebrow,
   title,
   subtitle,
@@ -38,6 +47,9 @@ export default function PatientShell({
   children,
 }: {
   active: string;
+  nav?: { href: string; label: string }[];
+  home?: string;
+  roleLabel?: string;
   eyebrow?: string;
   title?: ReactNode;
   subtitle?: ReactNode;
@@ -61,10 +73,10 @@ export default function PatientShell({
     return (
       <div className="ml-root">
         <div className="ml-state">
-          <h1>Accès au dossier impossible</h1>
+          <h1>Accès impossible</h1>
           {error && <p className="ml-why">{error}</p>}
           <p>
-            Votre session a peut-être expiré, ou le compte utilisé n&apos;est pas un compte patient.
+            Votre session a peut-être expiré, ou votre compte n&apos;a pas les droits nécessaires.
             Reconnectez-vous pour continuer.
           </p>
           <div className="ml-actions">
@@ -81,7 +93,7 @@ export default function PatientShell({
       <div className="ml-root">
         <div className="ml-state">
           <div className="ml-pulse" />
-          <p>Chargement de votre dossier médical…</p>
+          <p>Chargement en cours…</p>
         </div>
       </div>
     );
@@ -91,9 +103,9 @@ export default function PatientShell({
     <div className="ml-root">
       <div className="ml-shell">
         <aside className="ml-rail">
-          <Link className="ml-brand" href="/dashboard">Med<em>Link</em></Link>
+          <Link className="ml-brand" href={home}>Med<em>Link</em></Link>
           <nav className="ml-menu">
-            {NAV.map((l) => (
+            {nav.map((l) => (
               <Link key={l.href} href={l.href} className={l.href === active ? "ml-on" : ""}>
                 {l.label}
               </Link>
@@ -104,7 +116,7 @@ export default function PatientShell({
               <div className="ml-avatar">{initials}</div>
               <div style={{ minWidth: 0 }}>
                 <div className="ml-me-name">{firstName} {lastName}</div>
-                <div className="ml-me-role">Patient</div>
+                <div className="ml-me-role">{roleLabel}</div>
               </div>
             </div>
             <button className="ml-logout" onClick={logout}>Se déconnecter</button>

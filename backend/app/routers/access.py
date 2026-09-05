@@ -77,3 +77,47 @@ def my_pending_requests(
         .order_by(RecordAccessGrant.requested_at.desc())
         .all()
     )
+
+@router.get("/my-patients")
+def my_authorized_patients(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("doctor")),
+):
+    """Patients ayant accordé au médecin connecté un accès encore valide."""
+    doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Profil médecin introuvable")
+
+    now = datetime.now(timezone.utc)
+    grants = (
+        db.query(RecordAccessGrant)
+        .filter(
+            RecordAccessGrant.doctor_id == doctor.id,
+            RecordAccessGrant.status == AccessStatus.approved,
+        )
+        .order_by(RecordAccessGrant.responded_at.desc())
+        .all()
+    )
+
+    seen, result = set(), []
+    for grant in grants:
+        if grant.patient_id in seen:
+            continue
+        if grant.expires_at and grant.expires_at < now:
+            continue
+        patient = db.get(Patient, grant.patient_id)
+        if not patient:
+            continue
+        seen.add(patient.id)
+        result.append({
+            "id": patient.id,
+            "first_name": patient.first_name,
+            "last_name": patient.last_name,
+            "date_of_birth": str(patient.date_of_birth) if patient.date_of_birth else None,
+            "national_id": patient.national_id,
+            "sex": patient.sex,
+            "blood_group": getattr(patient, "blood_group", None),
+            "granted_at": grant.responded_at,
+            "expires_at": grant.expires_at,
+        })
+    return result

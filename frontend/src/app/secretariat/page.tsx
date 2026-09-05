@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 
-type TabType = "dashboard" | "rdv" | "patients" | "new_patient" | "doctors" | "alerts";
+type TabType = "dashboard" | "rdv" | "patients" | "new_patient" | "doctors" | "archives" | "alerts";
 
 interface Patient {
   id: string;
@@ -15,6 +15,8 @@ interface Patient {
   blood_group: string;
   national_id: string | null;
   address: string | null;
+  status: string;
+  status_reason: string | null;
 }
 
 interface DoctorSummary {
@@ -42,6 +44,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const NAV: { id: TabType; label: string }[] = [
+ 
   { id: "dashboard", label: "Journée" },
   { id: "rdv", label: "Rendez-vous" },
   { id: "patients", label: "Patients" },
@@ -123,6 +126,9 @@ export default function SecretariatDashboard() {
   const [searchResults, setSearchResults] = useState<Patient[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [openPatientId, setOpenPatientId] = useState<string | null>(null);
+  const [statusTarget, setStatusTarget] = useState<{ patient: Patient; action: "archived" | "removed" } | null>(null);
+  const [statusReason, setStatusReason] = useState("");
+  const [statusSaving, setStatusSaving] = useState(false);
 
   const patientName = (id: string) => {
     const p = patients.find((x) => x.id === id);
@@ -138,7 +144,7 @@ export default function SecretariatDashboard() {
     setLoadError("");
     try {
       const [p, d, a] = await Promise.all([
-        api<Patient[]>("/patients/"),
+        api<Patient[]>("/patients/?status=all"),
         api<DoctorSummary[]>("/doctors"),
         api<Appointment[]>("/appointments/"),
       ]);
@@ -180,6 +186,32 @@ export default function SecretariatDashboard() {
       .finally(() => { if (!cancelled) setRdvSlotsLoading(false); });
     return () => { cancelled = true; };
   }, [isRdvModalOpen, rdvDoctorId, rdvFormData.date]);
+
+    async function changeStatus(patientId: string, status: string, reason?: string) {
+    const params = new URLSearchParams({ status });
+    if (reason) params.set("reason", reason);
+    await api(`/patients/${patientId}/status?${params.toString()}`, { method: "PATCH" });
+    await loadAll();
+  }
+
+  async function confirmStatusChange() {
+    if (!statusTarget) return;
+    if (statusTarget.action === "removed" && !statusReason.trim()) return;
+    setStatusSaving(true);
+    try {
+      await changeStatus(statusTarget.patient.id, statusTarget.action, statusReason.trim() || undefined);
+      setStatusTarget(null);
+      setStatusReason("");
+      setOpenPatientId(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Opération impossible.");
+    } finally {
+      setStatusSaving(false);
+    }
+  }
+
+  const activePatients = patients.filter((p) => (p.status ?? "active") === "active");
+  const inactivePatients = patients.filter((p) => (p.status ?? "active") !== "active");
 
   async function handleRdvSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -337,7 +369,7 @@ export default function SecretariatDashboard() {
 
   const todayCount = appointments.filter((a) => isToday(a.scheduled_at)).length;
   const scheduledCount = appointments.filter((a) => a.status === "scheduled").length;
-  const listedPatients = hasSearched && searchQuery.trim() ? searchResults : patients;
+  const listedPatients = hasSearched && searchQuery.trim() ? searchResults : activePatients;
 
   function slotCells(doctorId: string, dateISO: string, apiSlots: string[], excludeId?: string) {
     const now = new Date();
@@ -668,10 +700,21 @@ export default function SecretariatDashboard() {
         <div className="wrap hero-row">
           <div>
             <p className="kicker">PLATEFORME MÉDICALE SÉCURISÉE</p>
-            <h1 className="hero-title">Bonjour, voici votre journée.</h1>
-            <p className="hero-sub">
-              {todayCount} rendez-vous aujourd&apos;hui · {patients.length} patients enregistrés
-            </p>
+              <h1 className="hero-title">
+                {activeTab === "patients" || activeTab === "new_patient" ? "Patients"
+                  : activeTab === "rdv" ? "Rendez-vous"
+                  : activeTab === "doctors" ? "Médecins du cabinet"
+                  : activeTab === "alerts" ? "Alertes"
+                  : "Bonjour, voici votre journée."}
+              </h1>
+              <p className="hero-sub">
+                {activeTab === "patients" || activeTab === "new_patient"
+                  ? `${patients.length} patients enregistrés`
+                  : activeTab === "rdv" ? `${appointments.length} rendez-vous au total`
+                  : activeTab === "doctors" ? `${doctors.length} médecins rattachés`
+                  : activeTab === "alerts" ? "Demandes et rappels en attente"
+                  : `${todayCount} rendez-vous aujourd'hui · ${patients.length} patients enregistrés`}
+              </p>
           </div>
           <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: 10, paddingBottom: 4 }}>
             <input
@@ -818,9 +861,17 @@ export default function SecretariatDashboard() {
                         <div className="facts">
                           <div><div className="fact-k">CIN</div><div className="fact-v">{p.national_id || "Non renseigné"}</div></div>
                           <div><div className="fact-k">Groupe sanguin</div><div className="fact-v">{p.blood_group}</div></div>
-                          <div><div className="fact-k">Date de naissance</div><div className="fact-v">{p.date_of_birth}</div></div>
+                          <div><div className="fact-k">Date de naissance</div><div className="fact-v">{p.date_of_birth ? parseLocal(p.date_of_birth).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) : "—"}</div></div>
                           <div><div className="fact-k">Sexe</div><div className="fact-v">{p.sex === "M" ? "Homme" : p.sex === "F" ? "Femme" : "—"}</div></div>
                           <div style={{ gridColumn: "1 / -1" }}><div className="fact-k">Adresse</div><div className="fact-v">{p.address || "Non renseignée"}</div></div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, marginBottom: 18, paddingBottom: 18, borderBottom: "1px solid #e1eaf3" }}>
+                          <button className="btn btn-ghost btn-sm" onClick={() => { setStatusTarget({ patient: p, action: "archived" }); setStatusReason(""); }}>
+                            Archiver
+                          </button>
+                          <button className="btn btn-danger btn-sm" onClick={() => { setStatusTarget({ patient: p, action: "removed" }); setStatusReason(""); }}>
+                            Retirer du cabinet
+                          </button>
                         </div>
                         <div className="fact-k" style={{ marginBottom: 8 }}>Rendez-vous</div>
                         {appointments.filter((a) => a.patient_id === p.id).length === 0 ? (
@@ -902,6 +953,48 @@ export default function SecretariatDashboard() {
                     <span className="meta" style={{ marginTop: 0 }}>
                       {appointments.filter((a) => a.doctor_id === d.id).length} rendez-vous
                     </span>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+                    {activeTab === "archives" && (
+            <div className="panel">
+              <div className="panel-head">
+                <h2 className="panel-title">
+                  {inactivePatients.length} dossier{inactivePatients.length > 1 ? "s" : ""} archivé{inactivePatients.length > 1 ? "s" : ""}
+                </h2>
+              </div>
+              {inactivePatients.length === 0 ? (
+                <div className="empty">
+                  Aucun dossier archivé. Les patients archivés ou retirés du cabinet apparaîtront ici,
+                  avec l&apos;intégralité de leur historique.
+                </div>
+              ) : (
+                inactivePatients.map((p) => (
+                  <div key={p.id} className="line-item">
+                    <div style={{ minWidth: 0 }}>
+                      <div className="name">{p.last_name} {p.first_name}</div>
+                      <div className="meta">
+                        CIN {p.national_id || "—"}
+                        {p.status_reason ? ` · ${p.status_reason}` : ""}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+                      <span className={`pill ${p.status === "removed" ? "p-cancelled" : "p-no_show"}`}>
+                        {p.status === "removed" ? "Retiré" : "Archivé"}
+                      </span>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={async () => {
+                          try { await changeStatus(p.id, "active"); }
+                          catch (err) { alert(err instanceof Error ? err.message : "Réactivation impossible."); }
+                        }}
+                      >
+                        Réactiver
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
@@ -1177,6 +1270,49 @@ export default function SecretariatDashboard() {
           </div>
         </div>
       )}
+
+            {statusTarget && (
+        <div className="overlay" onClick={() => setStatusTarget(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modal-title">
+              {statusTarget.action === "archived" ? "Archiver ce dossier ?" : "Retirer ce patient du cabinet ?"}
+            </h3>
+            <p style={{ fontSize: 15, fontWeight: 600, margin: "0 0 6px" }}>
+              {statusTarget.patient.last_name} {statusTarget.patient.first_name}
+            </p>
+            <p style={{ fontSize: 14, color: "#5a7590", lineHeight: 1.6, marginTop: 0 }}>
+              {statusTarget.action === "archived"
+                ? "Le dossier sort des listes courantes mais reste consultable dans les archives. Rien n'est supprimé, et vous pouvez le réactiver à tout moment."
+                : "Le dossier est retiré des listes courantes. Ses consultations, ordonnances et factures restent conservées dans les archives. Aucune donnée n'est effacée."}
+            </p>
+
+            <div style={{ marginTop: 18 }}>
+              <label className="lab">
+                Motif {statusTarget.action === "removed" ? "(obligatoire)" : "(facultatif)"}
+              </label>
+              <input
+                className="field"
+                autoFocus
+                placeholder={statusTarget.action === "removed" ? "A changé de médecin" : "Sans consultation depuis deux ans"}
+                value={statusReason}
+                onChange={(e) => setStatusReason(e.target.value)}
+              />
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn btn-ghost" onClick={() => setStatusTarget(null)}>Annuler</button>
+              <button
+                className="btn btn-primary"
+                disabled={statusSaving || (statusTarget.action === "removed" && !statusReason.trim())}
+                onClick={confirmStatusChange}
+              >
+                {statusSaving ? "En cours…" : "Confirmer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
