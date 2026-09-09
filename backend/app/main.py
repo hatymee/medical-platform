@@ -2,8 +2,7 @@
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.routers import auth, access, documents, appointments, patients, clinics, clinical, billing
-
+from app.routers import auth, access, documents, appointments, patients, clinics, clinical, billing, procedures
 app = FastAPI(title=settings.PROJECT_NAME)
 
 # Liste explicite des origines autorisées
@@ -30,6 +29,7 @@ app.include_router(patients.router, prefix=settings.API_V1_PREFIX)
 app.include_router(clinics.router, prefix=settings.API_V1_PREFIX)
 app.include_router(clinical.router, prefix=settings.API_V1_PREFIX)
 app.include_router(billing.router, prefix=settings.API_V1_PREFIX)
+app.include_router(procedures.router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/health")

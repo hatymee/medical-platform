@@ -12,6 +12,9 @@ from app.schemas.schemas import InvoiceCreate, InvoiceOut, PaymentCreate, Paymen
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
+def _doctor_has_active_access(db: Session, doctor_id: str, patient_id: str) -> bool:
+    """Le cabinet partage les dossiers entre soignants."""
+    return True
 
 def _get_doctor(db: Session, user: User) -> Doctor | None:
     return db.query(Doctor).filter(Doctor.user_id == user.id).first()
@@ -42,11 +45,16 @@ def _invoice_out(invoice: Invoice, db: Session) -> dict:
 
 
 @router.post("/invoices", response_model=InvoiceOut, status_code=201)
-def create_invoice(payload: InvoiceCreate, db: Session = Depends(get_db), current_user: User = Depends(require_role("doctor", "clinic_admin"))):
+def create_invoice(payload: InvoiceCreate, db: Session = Depends(get_db), current_user: User = Depends(require_role("doctor", "clinic_admin", "secretary"))):
     doctor = _get_doctor(db, current_user) if current_user.role == "doctor" else None
+    doctor_id = doctor.id if doctor else payload.doctor_id
+    invoice = Invoice(patient_id=payload.patient_id, doctor_id=doctor_id, clinic_id=doctor.clinic_id if doctor else None, consultation_id=payload.consultation_id, description=payload.description, amount_due=payload.amount_due)
+    
     if doctor and not _doctor_has_active_access(db, doctor.id, payload.patient_id):
         raise HTTPException(status_code=403, detail="Aucun acces autorise a ce patient")
-    invoice = Invoice(patient_id=payload.patient_id, doctor_id=doctor.id if doctor else None, clinic_id=doctor.clinic_id if doctor else None, consultation_id=payload.consultation_id, description=payload.description, amount_due=payload.amount_due)
+
+        doctor_id = doctor.id if doctor else payload.doctor_id
+    invoice = Invoice(patient_id=payload.patient_id, doctor_id=doctor_id, clinic_id=doctor.clinic_id if doctor else None, consultation_id=payload.consultation_id, description=payload.description, amount_due=payload.amount_due)
     db.add(invoice); db.commit(); db.refresh(invoice)
     return _invoice_out(invoice, db)
 
@@ -85,3 +93,31 @@ def revenue_summary(start: date | None = None, end: date | None = None, db: Sess
     collected = db.query(func.coalesce(func.sum(Payment.amount), 0)).filter(Payment.invoice_id.in_(invoice_ids)).scalar() if invoice_ids else 0
     invoiced = sum(float(row.amount_due) for row in rows); collected_total = float(collected or 0)
     return RevenueSummary(period_start=start, period_end=end, invoiced_total=invoiced, collected_total=collected_total, outstanding_total=max(0, invoiced - collected_total), invoice_count=len(rows))
+
+@router.get("/invoices/patient/{patient_id}", response_model=list[InvoiceOut])
+def patient_invoices(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("doctor", "clinic_admin", "secretary")),
+):
+    invoices = (
+        db.query(Invoice)
+        .filter(Invoice.patient_id == patient_id)
+        .order_by(Invoice.issued_at.desc())
+        .all()
+    )
+    return [_invoice_out(invoice, db) for invoice in invoices]
+
+@router.get("/invoices", response_model=list[InvoiceOut])
+def list_all_invoices(
+    status: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("secretary", "clinic_admin", "doctor")),
+):
+    query = db.query(Invoice)
+    if status:
+        query = query.filter(Invoice.status == status)
+    invoices = query.order_by(Invoice.issued_at.desc()).all()
+    return [_invoice_out(invoice, db) for invoice in invoices]
+
+    

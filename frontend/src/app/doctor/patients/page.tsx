@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import PatientShell, { DOCTOR_NAV, parseLocal } from "@/components/PatientShell";
+import Link from "next/link";
+
 
 type Granted = {
   id: string;
@@ -25,11 +27,12 @@ export default function DoctorPatientsPage() {
   useEffect(() => {
     (async () => {
       try {
-        setMe({
-          first_name: localStorage.getItem("first_name") ?? "",
-          last_name: localStorage.getItem("last_name") ?? "",
-        });
-        setPatients((await api<Granted[]>("/access/my-patients")) ?? []);
+        const [profile, list] = await Promise.all([
+          api<any>("/doctors/me").catch(() => null),
+          api<Granted[]>("/patients/").catch(() => []),
+        ]);
+        if (profile) setMe({ first_name: profile.first_name, last_name: profile.last_name });
+        setPatients(list ?? []);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Impossible de charger vos patients.");
       } finally {
@@ -49,22 +52,22 @@ export default function DoctorPatientsPage() {
       firstName={me.first_name}
       lastName={me.last_name}
       eyebrow="ESPACE MÉDECIN"
-      title="Patients autorisés"
+      title="Patients"
       subtitle={
         patients.length > 0
           ? `${patients.length} patient${patients.length > 1 ? "s" : ""} vous ont ouvert leur dossier`
-          : "Aucun patient ne vous a encore autorisé l'accès."
+          : ""
       }
     >
       <article className="ml-card">
-        <div className="ml-card-top"><h2>Accès en cours</h2></div>
-        {patients.length === 0 ? (
-          <div className="ml-empty">
-            <p>
-              Aucun accès actif. Un patient doit approuver votre demande depuis son espace
-              pour que son dossier apparaisse ici.
-            </p>
-          </div>
+
+
+        <div className="ml-card-top"><h2>Dossiers du cabinet</h2></div>
+          {patients.length === 0 ? (
+            <div className="ml-empty">
+              <p>Aucun patient enregistré. La secrétaire crée les dossiers depuis son espace.</p>
+            </div>
+            
         ) : (
           patients.map((p) => (
             <div className="ml-item" key={p.id}>
@@ -79,11 +82,14 @@ export default function DoctorPatientsPage() {
                   {p.blood_group && p.blood_group !== "unknown" ? ` · groupe ${p.blood_group}` : ""}
                 </p>
               </div>
-              {p.expires_at && (
-                <span className="ml-pill ml-pill-scheduled">
-                  jusqu&apos;au {parseLocal(p.expires_at).toLocaleDateString("fr-FR")}
-                </span>
-              )}
+              <Link
+                  className="ml-btn ml-btn-ghost"
+                  href={`/doctor/patients/${p.id}`}
+                  style={{ padding: "7px 14px", fontSize: 13, flexShrink: 0 }}
+                >
+                  Ouvrir le dossier
+              </Link>
+
             </div>
           ))
         )}

@@ -86,13 +86,13 @@ export default function ProfessionnelPage() {
       text: <>Aucune facture sur les six derniers mois. Créez une facture après chaque consultation, puis enregistrez les règlements : ce tableau se remplira automatiquement.</>,
     });
   } else {
-    if (rate < 70) {
+    if (rate < 99.5) {
       insights.push({
         tone: "ml-warn",
         mark: "!",
         text: <>Votre taux de recouvrement est de <b>{rate.toFixed(0)} %</b>. Il reste <b>{money(outstanding)}</b> à encaisser. En dessous de 70 %, la trésorerie devient tendue même quand l&apos;activité est bonne.</>,
       });
-    } else if (rate >= 90) {
+    } else if (rate >= 99.5) {
       insights.push({
         tone: "ml-good",
         mark: "✓",

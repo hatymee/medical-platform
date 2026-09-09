@@ -54,11 +54,12 @@ def register_patient(payload: PatientRegister, db: Session = Depends(get_db)):
     return TokenResponse(access_token=token, role=user.role.value)
 
 
+
 @router.post("/register/doctor", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 def register_doctor(
     payload: DoctorRegister,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("clinic_admin", "super_admin")),
+    current_user: User = Depends(require_role("clinic_admin", "super_admin", "doctor")),
 ):
     if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(status_code=400, detail="Cet email est deja utilise")
@@ -83,7 +84,7 @@ def register_doctor(
 def register_secretary(
     payload: SecretaryRegister,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("clinic_admin", "super_admin")),
+    current_user: User = Depends(require_role("clinic_admin", "super_admin", "doctor")),
 ):
     if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(status_code=400, detail="Cet email est deja utilise")

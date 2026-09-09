@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 
-type TabType = "dashboard" | "rdv" | "patients" | "new_patient" | "doctors" | "archives" | "alerts";
+
+type TabType = "dashboard" | "rdv" | "patients" | "new_patient" | "doctors" | "archives" | "settings" | "alerts" | "billing";
 
 interface Patient {
   id: string;
@@ -49,6 +50,7 @@ const NAV: { id: TabType; label: string }[] = [
   { id: "rdv", label: "Rendez-vous" },
   { id: "patients", label: "Patients" },
   { id: "doctors", label: "Médecins" },
+  { id: "billing", label: "Facturation" },
   { id: "alerts", label: "Alertes" },
 ];
 
@@ -130,6 +132,113 @@ export default function SecretariatDashboard() {
   const [statusReason, setStatusReason] = useState("");
   const [statusSaving, setStatusSaving] = useState(false);
 
+    const [menuOpen, setMenuOpen] = useState(false);
+  const [pwdForm, setPwdForm] = useState({ current: "", next: "" });
+  const [emailForm, setEmailForm] = useState({ current: "", next: "" });
+  const [settingsMsg, setSettingsMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [payTarget, setPayTarget] = useState<any>(null);
+  const [payForm, setPayForm] = useState({ amount: "", method: "cash", reference: "" });
+  const [paySaving, setPaySaving] = useState(false);
+  const [payError, setPayError] = useState("");
+    const [procedures, setProcedures] = useState<any[]>([]);
+  const [billOpen, setBillOpen] = useState(false);
+  const [billForm, setBillForm] = useState({ patientId: "", doctorId: "", procedureId: "", description: "", amount: "" });
+  const [billError, setBillError] = useState("");
+  const [billSaving, setBillSaving] = useState(false);
+
+  async function submitInvoice(e: React.FormEvent) {
+    e.preventDefault();
+    setBillError("");
+    const amount = parseFloat(billForm.amount.replace(",", "."));
+    if (!billForm.patientId || !billForm.description.trim() || !amount || amount <= 0) {
+      setBillError("Patient, prestation et montant sont requis.");
+      return;
+    }
+    setBillSaving(true);
+    try {
+      await api("/billing/invoices", {
+        method: "POST",
+        body: JSON.stringify({
+          patient_id: billForm.patientId,
+          doctor_id: billForm.doctorId || null,
+          description: billForm.description.trim(),
+          amount_due: amount,
+        }),
+      });
+      setBillOpen(false);
+      setBillForm({ patientId: "", doctorId: "", procedureId: "", description: "", amount: "" });
+      await loadAll();
+    } catch (err) {
+      setBillError(err instanceof Error ? err.message : "Facturation impossible.");
+    } finally {
+      setBillSaving(false);
+    }
+  }
+
+  async function submitPayment(e: React.FormEvent) {
+    e.preventDefault();
+    setPayError("");
+    const amount = parseFloat(payForm.amount.replace(",", "."));
+    if (!amount || amount <= 0) {
+      setPayError("Le montant doit être positif.");
+      return;
+    }
+    if (amount > payTarget.balance_due + 0.01) {
+      setPayError(`Le montant dépasse le reste à payer (${payTarget.balance_due} MAD).`);
+      return;
+    }
+    setPaySaving(true);
+    try {
+      await api(`/billing/invoices/${payTarget.id}/payments`, {
+        method: "POST",
+        body: JSON.stringify({
+          amount,
+          method: payForm.method,
+          reference: payForm.reference.trim() || null,
+        }),
+      });
+      setPayTarget(null);
+      setPayForm({ amount: "", method: "cash", reference: "" });
+      await loadAll();
+    } catch (err) {
+      setPayError(err instanceof Error ? err.message : "Enregistrement impossible.");
+    } finally {
+      setPaySaving(false);
+    }
+  }
+
+  async function submitPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setSettingsMsg(null);
+    try {
+      await api("/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({ current_password: pwdForm.current, new_password: pwdForm.next }),
+      });
+      setPwdForm({ current: "", next: "" });
+      setSettingsMsg({ ok: true, text: "Mot de passe mis à jour." });
+    } catch (err) {
+      setSettingsMsg({ ok: false, text: err instanceof Error ? err.message : "Modification impossible." });
+    }
+  }
+
+  async function submitEmail(e: React.FormEvent) {
+    e.preventDefault();
+    setSettingsMsg(null);
+    try {
+      await api("/auth/change-email", {
+        method: "POST",
+        body: JSON.stringify({ current_password: emailForm.current, new_email: emailForm.next }),
+      });
+      setEmailForm({ current: "", next: "" });
+      setSettingsMsg({ ok: true, text: "Email mis à jour." });
+    } catch (err) {
+      setSettingsMsg({ ok: false, text: err instanceof Error ? err.message : "Modification impossible." });
+    }
+  }
+
+
   const patientName = (id: string) => {
     const p = patients.find((x) => x.id === id);
     return p ? `${p.first_name} ${p.last_name}` : "Patient inconnu";
@@ -143,14 +252,17 @@ export default function SecretariatDashboard() {
   const loadAll = useCallback(async () => {
     setLoadError("");
     try {
-      const [p, d, a] = await Promise.all([
+      const [p, d, a, inv] = await Promise.all([
         api<Patient[]>("/patients/?status=all"),
         api<DoctorSummary[]>("/doctors"),
         api<Appointment[]>("/appointments/"),
+        api<any[]>("/billing/invoices").catch(() => []),
       ]);
       setPatients(p);
       setDoctors(d);
       setAppointments(a);
+      setInvoices(inv ?? []);
+
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Impossible de charger les données.");
     }
@@ -193,6 +305,18 @@ export default function SecretariatDashboard() {
     await api(`/patients/${patientId}/status?${params.toString()}`, { method: "PATCH" });
     await loadAll();
   }
+    
+  useEffect(() => {
+    if (!billOpen || !billForm.doctorId) {
+      setProcedures([]);
+      return;
+    }
+    let cancelled = false;
+    api<any[]>(`/procedures?doctor_id=${billForm.doctorId}`)
+      .then((list) => { if (!cancelled) setProcedures(list ?? []); })
+      .catch(() => { if (!cancelled) setProcedures([]); });
+    return () => { cancelled = true; };
+  }, [billOpen, billForm.doctorId]);
 
   async function confirmStatusChange() {
     if (!statusTarget) return;
@@ -341,7 +465,7 @@ export default function SecretariatDashboard() {
 
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setActiveTab("patients");
+    
     setHasSearched(true);
     const q = searchQuery.toLowerCase().trim();
     if (!q) {
@@ -349,7 +473,7 @@ export default function SecretariatDashboard() {
       return;
     }
     setSearchResults(
-      patients.filter(
+      (activeTab === "archives" ? inactivePatients : activePatients).filter(
         (p) =>
           (p.national_id || "").toLowerCase().includes(q) ||
           p.last_name.toLowerCase().includes(q) ||
@@ -370,6 +494,12 @@ export default function SecretariatDashboard() {
   const todayCount = appointments.filter((a) => isToday(a.scheduled_at)).length;
   const scheduledCount = appointments.filter((a) => a.status === "scheduled").length;
   const listedPatients = hasSearched && searchQuery.trim() ? searchResults : activePatients;
+  const listedArchives = hasSearched && searchQuery.trim() ? searchResults : inactivePatients;
+  const invoicedTotal = invoices.reduce((s, i) => s + (i.amount_due ?? 0), 0);
+  const collectedTotal = invoices.reduce((s, i) => s + (i.paid_amount ?? 0), 0);
+  const unpaidCount = invoices.filter((i) => i.status !== "paid").length;
+  const money = (v: number) =>
+    new Intl.NumberFormat("fr-FR", { style: "currency", currency: "MAD", maximumFractionDigits: 0 }).format(v);
 
   function slotCells(doctorId: string, dateISO: string, apiSlots: string[], excludeId?: string) {
     const now = new Date();
@@ -476,11 +606,66 @@ export default function SecretariatDashboard() {
           transition: color 0.18s ease;
         }
         .signout:hover { color: var(--red); }
+        
+        .menu-wrap { position: relative; }
+        .menu-trigger {
+          display: flex; align-items: center; justify-content: center;
+          width: 42px; height: 42px;
+          border: 1px solid transparent; background: none;
+          border-radius: 10px; cursor: pointer;
+          transition: background-color 0.16s ease, border-color 0.16s ease;
+        }
 
-        .band {
+        .menu-trigger:hover { background: var(--blue-soft); border-color: var(--line); }
+
+        .burger { display: flex; flex-direction: column; justify-content: center; gap: 4px; width: 20px; height: 20px; }
+        .burger i {
+          display: block; height: 2px; width: 100%;
+          background: var(--navy); border-radius: 2px;
+          transition: transform 0.24s cubic-bezier(0.34, 1.3, 0.64, 1), opacity 0.16s ease;
+        }
+        .burger.x i:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+        .burger.x i:nth-child(2) { opacity: 0; }
+        .burger.x i:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+
+        .menu-backdrop { position: fixed; inset: 0; z-index: 200; }
+        .menu-pop {
+          position: absolute; right: 0; top: calc(100% + 6px); z-index: 201;
+          min-width: 232px; padding: 6px;
+          background: #fff; border: 1px solid var(--line); border-radius: 12px;
+          box-shadow: 0 16px 40px rgba(10, 37, 64, 0.16);
+          animation: drop 0.18s cubic-bezier(0.22, 1.2, 0.36, 1);
+        }
+        @keyframes drop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+        .menu-head { padding: 10px 12px 8px; }
+        .menu-name { font-size: 14px; font-weight: 700; color: var(--navy); }
+        .menu-role { font-size: 12px; color: var(--muted); margin-top: 1px; }
+
+        .menu-pop button {
+          display: flex; align-items: center; justify-content: space-between;
+          width: 100%; border: none; background: none; font: inherit;
+          font-size: 14px; font-weight: 500; color: var(--navy); text-align: left;
+          padding: 10px 12px; border-radius: 8px; cursor: pointer;
+          transition: background-color 0.14s ease;
+        }
+        .menu-pop button:hover { background: var(--blue-soft); }
+        .menu-danger { color: var(--red) !important; }
+        .menu-danger:hover { background: var(--red-bg) !important; }
+        .menu-count {
+          background: var(--blue-soft); color: var(--blue-dark);
+          font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 20px;
+        }
+        .menu-sep { height: 1px; background: var(--line); margin: 6px 4px; }
+        .ok { background: var(--green-bg); color: var(--green); padding: 13px 18px; border-radius: 10px; margin-bottom: 22px; font-size: 14px; font-weight: 600; }
+       
+        .band{
           background: linear-gradient(180deg, #e9f2fb 0%, var(--paper) 100%);
           padding: 32px 32px 0;
         }
+
+
+
         .wrap { max-width: 1180px; margin: 0 auto; width: 100%; }
         .main { padding: 28px 32px 56px; }
 
@@ -692,8 +877,41 @@ export default function SecretariatDashboard() {
             </button>
           ))}
         </nav>
-        <span className="who">Secrétariat</span>
-        <button className="signout" onClick={logout}>Se déconnecter</button>
+
+
+                <div className="menu-wrap">
+          <button className="menu-trigger" onClick={() => setMenuOpen((v) => !v)} aria-label="Menu">
+            <span className={`burger ${menuOpen ? "x" : ""}`}>
+              <i /><i /><i />
+            </span>
+          </button>
+          {menuOpen && (
+            <>
+              <div className="menu-backdrop" onClick={() => setMenuOpen(false)} />
+              <div className="menu-pop">
+                <div className="menu-head">
+                  <div className="menu-name">Secrétariat</div>
+                  <div className="menu-role">Compte connecté</div>
+                </div>
+                <div className="menu-sep" />
+                <button onClick={() => { setActiveTab("archives"); setMenuOpen(false); }}>
+                  Archives
+                  {inactivePatients.length > 0 && <span className="menu-count">{inactivePatients.length}</span>}
+                </button>
+                <button onClick={() => { setActiveTab("settings"); setMenuOpen(false); setSettingsMsg(null); }}>
+                  Paramètres
+                </button>
+                <div className="menu-sep" />
+                <button className="menu-danger" onClick={logout}>Se déconnecter</button>
+              </div>
+            </>
+          )}
+        </div> 
+
+
+
+
+        
       </header>
 
       <div className="band">
@@ -704,6 +922,9 @@ export default function SecretariatDashboard() {
                 {activeTab === "patients" || activeTab === "new_patient" ? "Patients"
                   : activeTab === "rdv" ? "Rendez-vous"
                   : activeTab === "doctors" ? "Médecins du cabinet"
+                  : activeTab === "archives" ? "Archives"
+                  : activeTab === "settings" ? "Paramètres"
+                  : activeTab === "billing" ? "Facturation"
                   : activeTab === "alerts" ? "Alertes"
                   : "Bonjour, voici votre journée."}
               </h1>
@@ -712,20 +933,29 @@ export default function SecretariatDashboard() {
                   ? `${patients.length} patients enregistrés`
                   : activeTab === "rdv" ? `${appointments.length} rendez-vous au total`
                   : activeTab === "doctors" ? `${doctors.length} médecins rattachés`
+                  : activeTab === "archives" ? `${inactivePatients.length} dossiers archivés`
+                  : activeTab === "settings" ? "Votre compte et vos identifiants"
+                  : activeTab === "billing" ? `${money(collectedTotal)} encaissés · ${unpaidCount} facture(s) impayée(s)`
                   : activeTab === "alerts" ? "Demandes et rappels en attente"
+
                   : `${todayCount} rendez-vous aujourd'hui · ${patients.length} patients enregistrés`}
               </p>
           </div>
-          <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: 10, paddingBottom: 4 }}>
-            <input
-              className="field"
-              style={{ width: 250 }}
-              placeholder="Nom du patient ou CIN"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <button type="submit" className="btn btn-primary">Rechercher</button>
-          </form>
+
+
+          {(activeTab === "patients" || activeTab === "new_patient" || activeTab === "archives") && (
+            <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: 10, paddingBottom: 4 }}>
+              <input
+                className="field"
+                style={{ width: 250 }}
+                placeholder="Nom du patient ou CIN"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <button type="submit" className="btn btn-primary">Rechercher</button>
+            </form>
+          )}
+
         </div>
       </div>
 
@@ -907,7 +1137,7 @@ export default function SecretariatDashboard() {
                   <div><label className="lab">Email</label><input className="field" type="email" required value={formData.email} onChange={(e) => setFormData((f) => ({ ...f, email: e.target.value }))} /></div>
                   <div><label className="lab">Mot de passe temporaire</label><input className="field" type="text" required value={formData.password} onChange={(e) => setFormData((f) => ({ ...f, password: e.target.value }))} /></div>
                   <div><label className="lab">CIN</label><input className="field" value={formData.nationalId} onChange={(e) => setFormData((f) => ({ ...f, nationalId: e.target.value }))} /></div>
-                  <div><label className="lab">Date de naissance</label><input className="field" type="date" required value={formData.dateOfBirth} onChange={(e) => setFormData((f) => ({ ...f, dateOfBirth: e.target.value }))} /></div>
+                  <div><label className="lab">Date de naissance</label><input className="field" type="date" required max={new Date().toISOString().slice(0, 10)} value={formData.dateOfBirth} onChange={(e) => setFormData((f) => ({ ...f, dateOfBirth: e.target.value }))} /></div>
                   <div>
                     <label className="lab">Sexe</label>
                     <select className="field" value={formData.sex} onChange={(e) => setFormData((f) => ({ ...f, sex: e.target.value }))}>
@@ -966,13 +1196,13 @@ export default function SecretariatDashboard() {
                   {inactivePatients.length} dossier{inactivePatients.length > 1 ? "s" : ""} archivé{inactivePatients.length > 1 ? "s" : ""}
                 </h2>
               </div>
-              {inactivePatients.length === 0 ? (
+              {listedArchives.length === 0 ? (
                 <div className="empty">
                   Aucun dossier archivé. Les patients archivés ou retirés du cabinet apparaîtront ici,
                   avec l&apos;intégralité de leur historique.
                 </div>
               ) : (
-                inactivePatients.map((p) => (
+                listedArchives.map((p) => (
                   <div key={p.id} className="line-item">
                     <div style={{ minWidth: 0 }}>
                       <div className="name">{p.last_name} {p.first_name}</div>
@@ -1001,14 +1231,149 @@ export default function SecretariatDashboard() {
             </div>
           )}
 
-          {activeTab === "alerts" && (
-            <div className="card" style={{ maxWidth: 720 }}>
-              <h2 className="panel-title" style={{ marginBottom: 10 }}>Alertes</h2>
-              <p style={{ fontSize: 14, color: "#5a7590", margin: 0, lineHeight: 1.6 }}>
-                Rien à signaler. Les demandes d&apos;accès aux dossiers et les rendez-vous non confirmés apparaîtront ici.
-              </p>
-            </div>
+
+
+          {activeTab === "billing" && (
+            <>
+              <div className="stats">
+                <div className="stat" style={{ cursor: "default" }}>
+                  <div className="stat-k">Encaissé</div>
+                  <div className="stat-v" style={{ color: "#1a7f4b" }}>{money(collectedTotal)}</div>
+                </div>
+                <div className="stat" style={{ cursor: "default" }}>
+                  <div className="stat-k">Facturé</div>
+                  <div className="stat-v">{money(invoicedTotal)}</div>
+                </div>
+                <div className="stat" style={{ cursor: "default" }}>
+                  <div className="stat-k">Reste à encaisser</div>
+                  <div className="stat-v" style={{ color: invoicedTotal - collectedTotal > 0 ? "#a86a12" : undefined }}>
+                    {money(Math.max(0, invoicedTotal - collectedTotal))}
+                  </div>
+                </div>
+                <div className="stat" style={{ cursor: "default" }}>
+                  <div className="stat-k">Impayées</div>
+                  <div className="stat-v">{unpaidCount}</div>
+                </div>
+              </div>
+               <div className="panel">
+                <div className="panel-head">
+                  <h2 className="panel-title">
+                    {invoices.length} facture{invoices.length > 1 ? "s" : ""}
+                  </h2>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => {
+                      setBillForm({
+                        patientId: "",
+                        doctorId: doctors.length > 0 ? doctors[0].id : "",
+                        procedureId: "",
+                        description: "",
+                        amount: "",
+                      });
+                      setBillError("");
+                      setBillOpen(true);
+                    }}
+                  >
+                    Nouvelle facture
+                  </button>
+                </div>
+                {invoices.length === 0 ? (
+                  <div className="empty">
+                    Aucune facture. Les médecins créent les factures depuis le dossier patient,
+                    après chaque consultation.
+                  </div>
+                ) : (
+                  invoices.map((inv) => (
+                    <div key={inv.id} className="line-item">
+                      <div style={{ minWidth: 0 }}>
+                        <div className="name">{patientName(inv.patient_id)}</div>
+                        <div className="meta">
+                          {inv.description} · {fmtDay(inv.issued_at)}
+                          {inv.doctor_id ? ` · ${doctorName(inv.doctor_id)}` : ""}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 12, alignItems: "center", flexShrink: 0 }}>
+                        <div style={{ textAlign: "right" }}>
+                          <div className="name">{money(inv.amount_due)}</div>
+                          {inv.balance_due > 0 && (
+                            <div className="meta" style={{ color: "#a86a12" }}>
+                              reste {money(inv.balance_due)}
+                            </div>
+                          )}
+                        </div>
+                        <span className={`pill ${inv.status === "paid" ? "p-confirmed" : inv.status === "partial" ? "p-scheduled" : "p-cancelled"}`}>
+                          {inv.status === "paid" ? "Réglée" : inv.status === "partial" ? "Partielle" : "Impayée"}
+                        </span>
+                        {inv.balance_due > 0 && (
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => {
+                              setPayTarget(inv);
+                              setPayForm({ amount: String(inv.balance_due), method: "cash", reference: "" });
+                              setPayError("");
+                            }}
+                          >
+                            Encaisser
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
           )}
+
+            {activeTab === "settings" && (
+              <div style={{ maxWidth: 620 }}>
+                {settingsMsg && (
+                  <div className={settingsMsg.ok ? "ok" : "alert"}>{settingsMsg.text}</div>
+                )}
+
+                <div className="card" style={{ marginBottom: 16 }}>
+                  <h2 className="panel-title" style={{ marginBottom: 18 }}>Changer le mot de passe</h2>
+                  <form onSubmit={submitPassword}>
+                    <div style={{ marginBottom: 14 }}>
+                      <label className="lab">Mot de passe actuel</label>
+                      <input className="field" type="password" required value={pwdForm.current} onChange={(e) => setPwdForm((f) => ({ ...f, current: e.target.value }))} />
+                    </div>
+                    <div style={{ marginBottom: 18 }}>
+                      <label className="lab">Nouveau mot de passe</label>
+                      <input className="field" type="password" required minLength={8} value={pwdForm.next} onChange={(e) => setPwdForm((f) => ({ ...f, next: e.target.value }))} />
+                      <p className="hint" style={{ marginTop: 6 }}>Huit caractères minimum.</p>
+                    </div>
+                    <button type="submit" className="btn btn-primary">Enregistrer</button>
+                  </form>
+                </div>
+
+                <div className="card">
+                  <h2 className="panel-title" style={{ marginBottom: 18 }}>Changer l&apos;adresse email</h2>
+                  <form onSubmit={submitEmail}>
+                    <div style={{ marginBottom: 14 }}>
+                      <label className="lab">Nouvel email</label>
+                      <input className="field" type="email" required value={emailForm.next} onChange={(e) => setEmailForm((f) => ({ ...f, next: e.target.value }))} />
+                    </div>
+                    <div style={{ marginBottom: 18 }}>
+                      <label className="lab">Mot de passe actuel</label>
+                      <input className="field" type="password" required value={emailForm.current} onChange={(e) => setEmailForm((f) => ({ ...f, current: e.target.value }))} />
+                    </div>
+                    <button type="submit" className="btn btn-primary">Enregistrer</button>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "alerts" && (
+              <div className="card" style={{ maxWidth: 720 }}>
+                <h2 className="panel-title" style={{ marginBottom: 10 }}>Alertes</h2>
+                <p style={{ fontSize: 14, color: "#5a7590", margin: 0, lineHeight: 1.6 }}>
+                  Rien à signaler. Les demandes d&apos;accès aux dossiers et les rendez-vous non confirmés apparaîtront ici.
+                </p>
+              </div>
+          )}
+
+
+          
         </div>
       </main>
 
@@ -1271,7 +1636,181 @@ export default function SecretariatDashboard() {
         </div>
       )}
 
-            {statusTarget && (
+
+      {billOpen && (
+        <div className="overlay" onClick={() => setBillOpen(false)}>
+          <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={submitInvoice}>
+            <h3 className="modal-title">Nouvelle facture</h3>
+
+            <div style={{ marginBottom: 16 }}>
+              <label className="lab">Patient</label>
+              <select
+                className="field"
+                required
+                value={billForm.patientId}
+                onChange={(e) => setBillForm((f) => ({ ...f, patientId: e.target.value }))}
+              >
+                <option value="">Choisir un patient</option>
+                {activePatients.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.last_name} {p.first_name}{p.national_id ? ` — ${p.national_id}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label className="lab">Médecin</label>
+              <select
+                className="field"
+                value={billForm.doctorId}
+                onChange={(e) => setBillForm((f) => ({ ...f, doctorId: e.target.value, procedureId: "", description: "", amount: "" }))}
+              >
+                {doctors.map((d) => (
+                  <option key={d.id} value={d.id}>Dr. {d.first_name} {d.last_name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label className="lab">Prestation</label>
+              {procedures.length === 0 ? (
+                <p className="hint">
+                  Ce médecin n&apos;a pas encore défini ses tarifs. Saisissez la prestation et le montant à la main.
+                </p>
+              ) : (
+                <select
+                  className="field"
+                  value={billForm.procedureId}
+                  onChange={(e) => {
+                    const proc = procedures.find((p) => p.id === e.target.value);
+                    setBillForm((f) => ({
+                      ...f,
+                      procedureId: e.target.value,
+                      description: proc ? proc.label : f.description,
+                      amount: proc ? String(proc.price) : f.amount,
+                    }));
+                  }}
+                >
+                  <option value="">Saisie libre</option>
+                  {procedures.map((p) => (
+                    <option key={p.id} value={p.id}>{p.label} — {money(p.price)}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label className="lab">Description</label>
+              <input
+                className="field"
+                placeholder="Consultation, pose de couronne…"
+                value={billForm.description}
+                onChange={(e) => setBillForm((f) => ({ ...f, description: e.target.value, procedureId: "" }))}
+              />
+            </div>
+
+            <div>
+              <label className="lab">Montant (MAD)</label>
+              <input
+                className="field"
+                inputMode="decimal"
+                placeholder="300"
+                value={billForm.amount}
+                onChange={(e) => setBillForm((f) => ({ ...f, amount: e.target.value }))}
+              />
+              <p className="hint" style={{ marginTop: 6 }}>
+                Le tarif se remplit automatiquement, mais reste modifiable.
+              </p>
+            </div>
+
+            {billError && <p className="err" style={{ marginTop: 16, marginBottom: 0 }}>{billError}</p>}
+
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={() => setBillOpen(false)}>Annuler</button>
+              <button type="submit" className="btn btn-primary" disabled={billSaving}>
+                {billSaving ? "Enregistrement…" : "Créer la facture"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {payTarget && (
+        <div className="overlay" onClick={() => setPayTarget(null)}>
+          <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={submitPayment}>
+            <h3 className="modal-title">Enregistrer un règlement</h3>
+            <p style={{ fontSize: 14, color: "#5a7590", marginTop: 0, marginBottom: 20 }}>
+              {patientName(payTarget.patient_id)} · {payTarget.description}
+            </p>
+
+            <div className="facts" style={{ marginBottom: 20 }}>
+              <div>
+                <div className="fact-k">Montant de la facture</div>
+                <div className="fact-v">{money(payTarget.amount_due)}</div>
+              </div>
+              <div>
+                <div className="fact-k">Déjà réglé</div>
+                <div className="fact-v">{money(payTarget.paid_amount)}</div>
+              </div>
+              <div>
+                <div className="fact-k">Reste à payer</div>
+                <div className="fact-v" style={{ color: "#a86a12" }}>{money(payTarget.balance_due)}</div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label className="lab">Montant encaissé (MAD)</label>
+              <input
+                className="field"
+                autoFocus
+                inputMode="decimal"
+                value={payForm.amount}
+                onChange={(e) => setPayForm((f) => ({ ...f, amount: e.target.value }))}
+              />
+              <p className="hint" style={{ marginTop: 6 }}>
+                Un montant inférieur au reste dû enregistre un règlement partiel.
+              </p>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label className="lab">Moyen de paiement</label>
+              <select
+                className="field"
+                value={payForm.method}
+                onChange={(e) => setPayForm((f) => ({ ...f, method: e.target.value }))}
+              >
+                <option value="cash">Espèces</option>
+                <option value="card">Carte bancaire</option>
+                <option value="transfer">Virement</option>
+                <option value="check">Chèque</option>
+                <option value="insurance">Prise en charge</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="lab">Référence</label>
+              <input
+                className="field"
+                placeholder="Numéro de chèque, transaction…"
+                value={payForm.reference}
+                onChange={(e) => setPayForm((f) => ({ ...f, reference: e.target.value }))}
+              />
+            </div>
+
+            {payError && <p className="err" style={{ marginTop: 16, marginBottom: 0 }}>{payError}</p>}
+
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={() => setPayTarget(null)}>Annuler</button>
+              <button type="submit" className="btn btn-primary" disabled={paySaving}>
+                {paySaving ? "Enregistrement…" : "Encaisser"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {statusTarget && (
         <div className="overlay" onClick={() => setStatusTarget(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3 className="modal-title">

@@ -231,6 +231,7 @@ class InvoiceCreate(BaseModel):
     description: str
     amount_due: float
     consultation_id: str | None = None
+    doctor_id: str | None = None
 
 
 class InvoiceOut(BaseModel):

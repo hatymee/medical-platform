@@ -75,3 +75,46 @@ def list_all_doctors(
     current_user: User = Depends(require_role("secretary", "clinic_admin", "patient")),
 ):
     return db.query(Doctor).order_by(Doctor.last_name).all()
+
+
+@router.get("/clinics/me", response_model=ClinicOut)
+def my_clinic(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("clinic_admin", "doctor", "secretary")),
+):
+    """La clinique de l'utilisateur connecte, quel que soit son role."""
+    clinic_id = None
+    if current_user.role == "doctor":
+        doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
+        clinic_id = doctor.clinic_id if doctor else None
+    elif current_user.role == "secretary":
+        secretary = db.query(Secretary).filter(Secretary.user_id == current_user.id).first()
+        clinic_id = secretary.clinic_id if secretary else None
+    else:
+        clinic = db.query(Clinic).filter(Clinic.admin_user_id == current_user.id).first()
+        clinic_id = clinic.id if clinic else None
+
+    if not clinic_id:
+        raise HTTPException(status_code=404, detail="Aucune clinique rattachee a ce compte")
+
+    clinic = db.get(Clinic, clinic_id)
+    if not clinic:
+        raise HTTPException(status_code=404, detail="Clinique introuvable")
+    return clinic
+
+
+@router.get("/secretaries")
+def list_secretaries(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("clinic_admin", "doctor")),
+):
+    rows = db.query(Secretary, User).join(User, Secretary.user_id == User.id).all()
+    return [
+        {
+            "id": s.id,
+            "first_name": s.first_name,
+            "last_name": s.last_name,
+            "email": u.email,
+        }
+        for s, u in rows
+    ]

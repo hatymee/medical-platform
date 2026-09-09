@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import PatientShell, { DOCTOR_NAV, parseLocal, clock } from "@/components/PatientShell";
+import { useRouter } from "next/navigation";
+
 
 const money = (v: number) =>
   new Intl.NumberFormat("fr-FR", { style: "currency", currency: "MAD", maximumFractionDigits: 0 }).format(v);
@@ -36,19 +38,21 @@ export default function DoctorDashboardPage() {
   const [me, setMe] = useState<{ first_name?: string; last_name?: string }>({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
     (async () => {
       try {
-        setMe({
-          first_name: localStorage.getItem("first_name") ?? "",
-          last_name: localStorage.getItem("last_name") ?? "",
-        });
-        const [apts, pats, rev] = await Promise.all([
+      
+        const [profile, apts, pats, rev] = await Promise.all([
+          api<any>("/doctors/me").catch(() => null),
           api<any[]>("/appointments/mine").catch(() => []),
-          api<any[]>("/access/my-patients").catch(() => []),
+          api<any[]>("/patients/").catch(() => []),
           api<any>("/billing/revenue").catch(() => null),
         ]);
+
+        if (profile) setMe({ first_name: profile.first_name, last_name: profile.last_name });
+        
         setAppointments(apts ?? []);
         setPatients(pats ?? []);
         setRevenue(rev);
@@ -102,23 +106,24 @@ export default function DoctorDashboardPage() {
         </Link>
       }
     >
+
       <div className="ml-stats">
-        <div className="ml-stat">
+        <button className="ml-stat" style={{ textAlign: "left", font: "inherit", cursor: "pointer" }} onClick={() => router.push("/doctor/patients")}>
           <div className="ml-stat-k">Aujourd&apos;hui</div>
           <div className="ml-stat-v">{today.length}</div>
           <div className="ml-stat-s">{done} consultation{done > 1 ? "s" : ""} terminée{done > 1 ? "s" : ""}</div>
-        </div>
-        <div className="ml-stat">
+        </button>
+        <button className="ml-stat" style={{ textAlign: "left", font: "inherit", cursor: "pointer" }} onClick={() => router.push("/doctor/patients")}>
           <div className="ml-stat-k">À venir</div>
           <div className="ml-stat-v">{upcoming.length}</div>
           <div className="ml-stat-s">rendez-vous programmés</div>
-        </div>
-        <div className="ml-stat">
-          <div className="ml-stat-k">Patients autorisés</div>
+        </button>
+        <button className="ml-stat" style={{ textAlign: "left", font: "inherit", cursor: "pointer" }} onClick={() => router.push("/doctor/patients")}>
+          <div className="ml-stat-k">Patients</div>
           <div className="ml-stat-v">{patients.length}</div>
-          <div className="ml-stat-s">dossiers accessibles</div>
-        </div>
-        <div className="ml-stat">
+          <div className="ml-stat-s">dossiers du cabinet</div>
+        </button>
+        <button className="ml-stat" style={{ textAlign: "left", font: "inherit", cursor: "pointer" }} onClick={() => router.push("/professionnel")}>
           <div className="ml-stat-k">Encaissé (30 j)</div>
           <div className="ml-stat-v">{revenue ? money(revenue.collected_total) : "—"}</div>
           <div className="ml-stat-s">
@@ -126,7 +131,7 @@ export default function DoctorDashboardPage() {
               ? `${money(revenue.outstanding_total)} en attente`
               : "règlements enregistrés"}
           </div>
-        </div>
+        </button>
       </div>
 
       <article className="ml-card" style={{ marginBottom: 16 }}>
@@ -183,7 +188,11 @@ export default function DoctorDashboardPage() {
                   </div>
                   <div style={{ minWidth: 0 }}>
                     <h3>{patientName(a.patient_id)}</h3>
-                    <p>{d.toLocaleDateString("fr-FR", { weekday: "long" })} à {clock(a.scheduled_at)}</p>
+                                        <p>
+                      {d.toLocaleDateString("fr-FR", { weekday: "long" })} à {clock(a.scheduled_at)}
+                      {a.reason ? ` · ${a.reason}` : ""}
+                    </p>
+                    
                   </div>
                 </div>
               );
@@ -193,12 +202,12 @@ export default function DoctorDashboardPage() {
 
         <article className="ml-card">
           <div className="ml-card-top">
-            <h2>Patients autorisés</h2>
+            <h2>Patients du cabinet</h2>
             <Link className="ml-more" href="/doctor/patients">Voir la liste</Link>
           </div>
           {patients.length === 0 ? (
             <div className="ml-empty">
-              <p>Aucun patient ne vous a encore ouvert son dossier.</p>
+              <p>Aucun patient enregistré dans le cabinet.</p>
             </div>
           ) : (
             patients.slice(0, 5).map((p) => (

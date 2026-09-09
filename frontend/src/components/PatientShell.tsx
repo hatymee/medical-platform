@@ -13,7 +13,7 @@ export const PATIENT_NAV = [
 
 export const DOCTOR_NAV = [
   { href: "/doctor/dashboard", label: "Tableau de bord" },
-  { href: "/doctor/patients", label: "Patients autorisés" },
+  { href: "/doctor/patients", label: "Patients" },
   { href: "/professionnel", label: "Chiffre d'affaires" },
 ];
 
@@ -104,12 +104,13 @@ export default function PatientShell({
       <div className="ml-shell">
         <aside className="ml-rail">
           <Link className="ml-brand" href={home}>Med<em>Link</em></Link>
-          <nav className="ml-menu">
+           <nav className="ml-menu">
             {nav.map((l) => (
               <Link key={l.href} href={l.href} className={l.href === active ? "ml-on" : ""}>
                 {l.label}
               </Link>
             ))}
+            <button className="ml-menu-logout" onClick={logout}>Se déconnecter</button>
           </nav>
           <div className="ml-foot">
             <div className="ml-me">
@@ -119,7 +120,6 @@ export default function PatientShell({
                 <div className="ml-me-role">{roleLabel}</div>
               </div>
             </div>
-            <button className="ml-logout" onClick={logout}>Se déconnecter</button>
           </div>
         </aside>
 
