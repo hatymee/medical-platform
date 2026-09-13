@@ -59,7 +59,7 @@ def register_patient(payload: PatientRegister, db: Session = Depends(get_db)):
 def register_doctor(
     payload: DoctorRegister,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("clinic_admin", "super_admin", "doctor")),
+    current_user: User = Depends(require_role("clinic_admin", "super_admin")),
 ):
     if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(status_code=400, detail="Cet email est deja utilise")
@@ -84,7 +84,7 @@ def register_doctor(
 def register_secretary(
     payload: SecretaryRegister,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("clinic_admin", "super_admin", "doctor")),
+    current_user: User = Depends(require_role("clinic_admin", "super_admin")),
 ):
     if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(status_code=400, detail="Cet email est deja utilise")
