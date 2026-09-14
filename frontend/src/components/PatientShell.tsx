@@ -111,6 +111,15 @@ export default function PatientShell({
               </Link>
             ))}
             <button className="ml-menu-logout" onClick={logout}>Se déconnecter</button>
+            <div className="ml-foot">
+            <div className="ml-me">
+              <div className="ml-avatar">{initials}</div>
+              <div style={{ minWidth: 0 }}>
+                <div className="ml-me-name">{firstName} {lastName}</div>
+                <div className="ml-me-role">{roleLabel}</div>
+              </div>
+            </div>
+          </div>
           </nav>
           <div className="ml-foot">
             <div className="ml-me">

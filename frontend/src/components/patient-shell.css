@@ -176,7 +176,7 @@
 }
 
 .ml-band {
-  background: linear-gradient(180deg, #e9f2fb 0%, var(--ml-paper) 100%);
+  background: linear-gradient(180deg, var(--ml-blue-soft) 0%, var(--ml-paper) 100%);
   padding: 34px 40px 0;
 }
 
@@ -249,7 +249,7 @@
 }
 
 .ml-btn-ghost {
-  background: #fff;
+    background: var(--ml-card);
   color: var(--ml-navy);
   border-color: var(--ml-line);
 }
@@ -269,7 +269,7 @@
 }
 
 .ml-stat {
-  background: #fff;
+  background: var(--ml-card);
   border: 1px solid var(--ml-line);
   border-radius: 14px;
   padding: 20px;
@@ -318,7 +318,7 @@
 }
 
 .ml-card {
-  background: #fff;
+    background: var(--ml-card);
   border: 1px solid var(--ml-line);
   border-radius: 14px;
   padding: 24px;
@@ -337,6 +337,7 @@
   font-weight: 700;
   letter-spacing: -0.01em;
   margin: 0;
+  color: var(--ml-navy);
 }
 
 .ml-more {
@@ -536,7 +537,7 @@
   font: inherit;
   font-size: 14px;
   color: var(--ml-navy);
-  background: #fff;
+    background: var(--ml-card);
   border: 1px solid var(--ml-line);
   border-radius: 9px;
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
@@ -573,7 +574,7 @@ select.ml-field {
   gap: 2px;
   min-width: 52px;
   padding: 9px 6px;
-  background: #fff;
+    background: var(--ml-card);
   color: var(--ml-navy);
   border: 1px solid var(--ml-line);
   border-radius: 11px;
@@ -608,7 +609,7 @@ select.ml-field {
   padding: 8px 14px;
   border-radius: 8px;
   cursor: pointer;
-  background: #fff;
+    background: var(--ml-card);
   color: var(--ml-navy);
   border: 1px solid var(--ml-line);
   transition: transform 0.15s ease, background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
@@ -644,7 +645,7 @@ select.ml-field {
 @keyframes ml-fade { from { opacity: 0; } to { opacity: 1; } }
 
 .ml-modal {
-  background: #fff;
+    background: var(--ml-card);
   border-radius: 18px;
   padding: 28px;
   width: 470px;
@@ -681,21 +682,7 @@ select.ml-field {
   color: #fff !important;
 }
 
-:root {
-  --ml-blue: #1877e0;
-  --ml-blue-dark: #0f5cbf;
-  --ml-blue-soft: #eaf3fd;
-  --ml-navy: #0a2540;
-  --ml-muted: #5a7590;
-  --ml-line: #e1eaf3;
-  --ml-paper: #f5f9fd;
-  --ml-red: #cf3a3a;
-  --ml-red-bg: #fcebeb;
-  --ml-amber: #a86a12;
-  --ml-amber-bg: #fbf0de;
-  --ml-green: #1a7f4b;
-  --ml-green-bg: #e6f4ec;
-}
+
 
 /* --- Graphique et indicateurs financiers --- */
 .ml-chart { display: flex; align-items: flex-end; gap: 14px; height: 220px; padding: 12px 0 0; }
@@ -769,7 +756,7 @@ select.ml-field {
 .ml-textarea {
   width: 100%; box-sizing: border-box; min-height: 110px; resize: vertical;
   padding: 11px 14px; font: inherit; font-size: 14px; line-height: 1.6;
-  color: var(--ml-navy); background: #fff;
+  color: var(--ml-navy);   background: var(--ml-card);
   border: 1px solid var(--ml-line); border-radius: 9px;
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
@@ -798,5 +785,28 @@ select.ml-field {
 .ml-menu-logout:hover {
   background: rgba(255, 100, 100, 0.12);
   color: #ff8f8f;
+  transform: translateX(3px);
+}
+
+.ml-theme-toggle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px 16px;
+  margin-top: 4px;
+  border: none;
+  background: none;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ml-rail-text);
+  cursor: pointer;
+  transition: background-color 0.18s ease, color 0.18s ease, transform 0.18s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+.ml-theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
   transform: translateX(3px);
 }
