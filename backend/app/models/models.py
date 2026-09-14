@@ -75,6 +75,7 @@ class User(Base):
     patient: Mapped["Patient"] = relationship(back_populates="user", uselist=False)
     doctor: Mapped["Doctor"] = relationship(back_populates="user", uselist=False)
     secretary_profile: Mapped["Secretary"] = relationship(back_populates="user", uselist=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
 class Patient(Base):
