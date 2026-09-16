@@ -51,6 +51,12 @@ class PatientProfile(BaseModel):
     blood_group: str
     national_id: str | None
     address: str | None
+    status: str = "active"
+    status_reason: str | None = None
+    status_changed_at: datetime | None = None
+
+    class Config:
+        from_attributes = True
 
     class Config:
         from_attributes = True
@@ -225,6 +231,7 @@ class InvoiceCreate(BaseModel):
     description: str
     amount_due: float
     consultation_id: str | None = None
+    doctor_id: str | None = None
 
 
 class InvoiceOut(BaseModel):

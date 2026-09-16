@@ -1,4 +1,5 @@
-﻿from datetime import datetime, timezone
+﻿import re
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
@@ -11,6 +12,14 @@ from app.models.models import (
 from app.schemas.schemas import MedicalDocumentOut
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+ALLOWED_TYPES = {
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/heic",
+}
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 
 
 def _doctor_has_active_access(db: Session, doctor_id: str, patient_id: str) -> bool:
@@ -31,6 +40,20 @@ def _doctor_has_active_access(db: Session, doctor_id: str, patient_id: str) -> b
     return True
 
 
+def _require_doctor(db: Session, user: User) -> Doctor:
+    doctor = db.query(Doctor).filter(Doctor.user_id == user.id).first()
+    if not doctor:
+        raise HTTPException(status_code=403, detail="Profil medecin introuvable")
+    return doctor
+
+
+def _safe_filename(name: str) -> str:
+    """Retire tout composant de chemin et ne garde qu'un nom de fichier inoffensif."""
+    base = name.replace("\\", "/").split("/")[-1]
+    base = re.sub(r"[^A-Za-z0-9._-]", "_", base).lstrip(".")
+    return base[:120] or "document"
+
+
 @router.get("/patient/{patient_id}", response_model=list[MedicalDocumentOut])
 def list_patient_documents(
     patient_id: str,
@@ -38,10 +61,10 @@ def list_patient_documents(
     current_user: User = Depends(get_current_user),
 ):
     if current_user.role == "patient":
-        if current_user.patient.id != patient_id:
+        if not current_user.patient or current_user.patient.id != patient_id:
             raise HTTPException(status_code=403, detail="Acces refuse")
     elif current_user.role == "doctor":
-        doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
+        doctor = _require_doctor(db, current_user)
         if not _doctor_has_active_access(db, doctor.id, patient_id):
             raise HTTPException(status_code=403, detail="Aucun acces autorise a ce dossier")
         db.add(AccessLog(doctor_id=doctor.id, patient_id=patient_id, action="viewed_documents"))
@@ -58,7 +81,7 @@ def list_patient_documents(
 
 
 @router.post("/upload", response_model=MedicalDocumentOut)
-def upload_document(
+async def upload_document(
     category: DocumentCategory = Form(...),
     title: str = Form(...),
     document_date: str = Form(...),
@@ -67,11 +90,33 @@ def upload_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("patient", "doctor", "secretary")),
 ):
-    patient_id = current_user.patient.id if current_user.role == "patient" else patient_id
-    if patient_id is None:
-        raise HTTPException(status_code=400, detail="Le patient doit être indiqué")
+    if current_user.role == "patient":
+        if not current_user.patient:
+            raise HTTPException(status_code=403, detail="Profil patient introuvable")
+        patient_id = current_user.patient.id
 
-    file_url = f"local://uploads/{patient_id}/{file.filename}"
+    if not patient_id:
+        raise HTTPException(status_code=400, detail="Le patient doit etre indique")
+
+    if current_user.role == "doctor":
+        doctor = _require_doctor(db, current_user)
+        if not _doctor_has_active_access(db, doctor.id, patient_id):
+            raise HTTPException(status_code=403, detail="Aucun acces autorise a ce dossier")
+        db.add(AccessLog(doctor_id=doctor.id, patient_id=patient_id, action="uploaded_document"))
+
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(            status_code=415,
+            detail="Format non accepte. Formats autorises : PDF, JPEG, PNG, HEIC.",
+        )
+
+    contents = await file.read()
+    if len(contents) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Fichier trop volumineux (15 Mo maximum).")
+    if not contents:
+        raise HTTPException(status_code=400, detail="Le fichier est vide.")
+
+    stored_name = _safe_filename(file.filename or "document")
+    file_url = f"local://uploads/{patient_id}/{stored_name}"
 
     doc = MedicalDocument(
         patient_id=patient_id,

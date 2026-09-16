@@ -75,6 +75,7 @@ class User(Base):
     patient: Mapped["Patient"] = relationship(back_populates="user", uselist=False)
     doctor: Mapped["Doctor"] = relationship(back_populates="user", uselist=False)
     secretary_profile: Mapped["Secretary"] = relationship(back_populates="user", uselist=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
 class Patient(Base):
@@ -89,6 +90,9 @@ class Patient(Base):
     blood_group: Mapped[str] = mapped_column(String(10), default="unknown")
     national_id: Mapped[str | None] = mapped_column(String(50))
     address: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    status_reason: Mapped[str | None] = mapped_column(Text)
+    status_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped["User"] = relationship(back_populates="patient")
 
@@ -114,6 +118,8 @@ class Clinic(Base):
     name: Mapped[str] = mapped_column(String(255))
     address: Mapped[str | None] = mapped_column(Text)
     phone: Mapped[str | None] = mapped_column(String(30))
+    admin_user_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=True)
+    admin_user_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=True)
 
 
 class Secretary(Base):
@@ -190,11 +196,35 @@ class AccessLog(Base):
 class Appointment(Base):
     __tablename__ = "appointments"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
-    patient_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("patients.id"))
-    
-    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    status: Mapped[AppointmentStatus] = mapped_column(Enum(AppointmentStatus), default=AppointmentStatus.scheduled)
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        default=gen_uuid
+    )
+
+    patient_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("patients.id"),
+        nullable=False
+    )
+
+    doctor_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("doctors.id"),
+        nullable=False
+    )
+
+    scheduled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False
+    )
+
+    status: Mapped[AppointmentStatus] = mapped_column(
+        Enum(AppointmentStatus),
+        default=AppointmentStatus.scheduled,
+        nullable=False
+    )
+
     reason: Mapped[str | None] = mapped_column(Text)
 
 
@@ -221,3 +251,13 @@ class Payment(Base):
     method: Mapped[str] = mapped_column(String(30), nullable=False)
     reference: Mapped[str | None] = mapped_column(String(100))
     paid_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class Procedure(Base):
+    __tablename__ = "procedures"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    doctor_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("doctors.id"))
+    label: Mapped[str] = mapped_column(String(255))
+    price: Mapped[float] = mapped_column(Numeric(10, 2))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
