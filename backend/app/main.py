@@ -6,12 +6,17 @@ from app.routers import auth, access, documents, appointments, patients, clinics
 app = FastAPI(title=settings.PROJECT_NAME)
 
 # Liste explicite des origines autorisées
+import os
+
+# Origines autorisees : localhost en dev, plus le domaine de production
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:8001",
-    "http://127.0.0.1:8001",
 ]
+
+frontend_url = os.getenv("FRONTEND_URL")
+if frontend_url:
+    origins.append(frontend_url)
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,7 +24,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
+)    
 
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
 app.include_router(access.router, prefix=settings.API_V1_PREFIX)
