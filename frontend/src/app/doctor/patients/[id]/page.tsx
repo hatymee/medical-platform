@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import PatientShell, { DOCTOR_NAV, parseLocal, clock } from "@/components/PatientShell";
+import DocumentViewer from "@/components/DocumentViewer";
 
 type Consultation = {
   id: string;
@@ -48,6 +49,9 @@ export default function DoctorPatientRecordPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [billTarget, setBillTarget] = useState<Consultation | null>(null);
   const [billForm, setBillForm] = useState({ description: "", amount_due: "" });
+  const [docs, setDocs] = useState<any[]>([]);  
+  const [viewDoc, setViewDoc] = useState<any>(null);
+
 
   async function submitInvoice(e: React.FormEvent) {
     e.preventDefault();
@@ -71,7 +75,9 @@ export default function DoctorPatientRecordPage() {
       setBillTarget(null);
       setBillForm({ description: "", amount_due: "" });
       await load();
+
       setInvoices((await api<any[]>(`/billing/invoices/patient/${patientId}`).catch(() => [])) ?? []);
+      setDocs((await api<any[]>(`/documents/patient/${patientId}`).catch(() => [])) ?? []);  
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Facturation impossible.");
     } finally {
@@ -280,6 +286,28 @@ export default function DoctorPatientRecordPage() {
             ))
           )}
         </article>
+        <article className="ml-card" style={{ marginTop: 16 }}>
+          <div className="ml-card-top">
+            <h2>Documents médicaux</h2>
+            {docs.length > 0 && <span className="ml-stat-s">{docs.length} document{docs.length > 1 ? "s" : ""}</span>}
+          </div>
+          {docs.length === 0 ? (
+            <div className="ml-empty"><p>Aucun document. Le secrétariat ajoute les scans et analyses depuis son espace.</p></div>
+          ) : (
+            docs.map((d) => (
+              <div className="ml-item" key={d.id}>
+                <div className="ml-rx">{(d.category ?? "?").slice(0, 2).toUpperCase()}</div>
+                <div style={{ flexGrow: 1, minWidth: 0 }}>
+                  <h3>{d.title}</h3>
+                  <p>{parseLocal(d.document_date).toLocaleDateString("fr-FR")}</p>
+                </div>
+                <button className="ml-btn ml-btn-ghost" style={{ padding: "7px 14px", fontSize: 13 }} onClick={() => setViewDoc(d)}>
+                  Ouvrir
+                </button>
+              </div>
+            ))
+          )}
+        </article>       
       </PatientShell>
 
       {consultOpen && (
@@ -427,6 +455,8 @@ export default function DoctorPatientRecordPage() {
           </form>
         </div>
       )}
+
+      {viewDoc && <DocumentViewer doc={viewDoc} onClose={() => setViewDoc(null)} />}
     </>
   );
 }

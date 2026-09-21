@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import DocumentViewer from "@/components/DocumentViewer";
 
 
 type TabType = "dashboard" | "rdv" | "patients" | "new_patient" | "doctors" | "archives" | "settings" | "alerts" | "billing";
@@ -43,6 +44,20 @@ const STATUS_LABELS: Record<string, string> = {
   completed: "Terminé",
   no_show: "Absence",
 };
+
+const DOC_CATEGORIES: Record<string, string> = {
+  prescription: "Ordonnance",
+  lab_result: "Analyse",
+  xray: "Radiographie",
+  mri: "IRM",
+  ct_scan: "Scanner",
+  ultrasound: "Échographie",
+  operative_report: "Compte rendu opératoire",
+  consultation_note: "Note de consultation",
+  other: "Autre",
+};
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001/api/v1";
 
 const NAV: { id: TabType; label: string }[] = [
  
@@ -146,6 +161,59 @@ export default function SecretariatDashboard() {
   const [billForm, setBillForm] = useState({ patientId: "", doctorId: "", procedureId: "", description: "", amount: "" });
   const [billError, setBillError] = useState("");
   const [billSaving, setBillSaving] = useState(false);
+  const [docs, setDocs] = useState<any[]>([]);
+  const [docForm, setDocForm] = useState({ category: "lab_result", title: "", date: "" });
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const [docError, setDocError] = useState("");
+  const [docSaving, setDocSaving] = useState(false);
+  const [viewDoc, setViewDoc] = useState<any>(null);
+
+  async function loadDocs(patientId: string) {
+    setDocs((await api<any[]>(`/documents/patient/${patientId}`).catch(() => [])) ?? []);
+  }
+
+  async function uploadDoc(patientId: string) {
+    setDocError("");
+    if (!docFile || !docForm.title.trim() || !docForm.date) {
+      setDocError("Fichier, titre et date sont requis.");
+      return;
+    }
+    setDocSaving(true);
+    try {
+      const body = new FormData();
+      body.append("patient_id", patientId);
+      body.append("category", docForm.category);
+      body.append("title", docForm.title.trim());
+      body.append("document_date", docForm.date);
+      body.append("file", docFile);
+
+      const res = await fetch(`${API_URL}/documents/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("medical_token") ?? ""}` },
+        body,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail ?? "Envoi impossible.");
+      }
+      setDocForm({ category: "lab_result", title: "", date: "" });
+      setDocFile(null);
+      await loadDocs(patientId);
+    } catch (err) {
+      setDocError(err instanceof Error ? err.message : "Envoi impossible.");
+    } finally {
+      setDocSaving(false);
+    }
+  }
+
+  async function openDoc(docId: string) {
+    try {
+      const { url } = await api<{ url: string }>(`/documents/${docId}/view`);
+      window.open(url, "_blank", "noopener");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Ouverture impossible.");
+    }
+  }
 
   async function submitInvoice(e: React.FormEvent) {
     e.preventDefault();
@@ -275,6 +343,14 @@ export default function SecretariatDashboard() {
     }
     loadAll();
   }, [loadAll, router]);
+
+  useEffect(() => {
+    if (openPatientId) {
+      setDocs([]);
+      setDocError("");
+      loadDocs(openPatientId);
+    }
+  }, [openPatientId]);  
 
   function logout() {
     localStorage.clear();
@@ -1103,7 +1179,41 @@ export default function SecretariatDashboard() {
                             Retirer du cabinet
                           </button>
                         </div>
-                        <div className="fact-k" style={{ marginBottom: 8 }}>Rendez-vous</div>
+
+                        <div style={{ marginBottom: 18, paddingBottom: 18, borderBottom: "1px solid #e1eaf3" }}>
+                          <div className="fact-k" style={{ marginBottom: 10 }}>Documents médicaux</div>
+
+                          {docs.length === 0 ? (
+                            <div className="meta" style={{ marginBottom: 14 }}>Aucun document pour ce patient.</div>
+                          ) : (
+                            docs.map((d) => (
+                              <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 0" }}>
+                                <span className="pill p-completed">{DOC_CATEGORIES[d.category] ?? d.category}</span>
+                                <span className="fact-v" style={{ flexGrow: 1 }}>{d.title}</span>
+                                <span className="meta" style={{ marginTop: 0 }}>{fmtDay(d.document_date)}</span>
+                                <button className="btn btn-ghost btn-sm" onClick={() => setViewDoc(d)}>Ouvrir</button>
+                              </div>
+                            ))
+                          )}
+
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 14 }}>
+                            <select className="field" value={docForm.category} onChange={(e) => setDocForm((f) => ({ ...f, category: e.target.value }))}>
+                              {Object.entries(DOC_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                            </select>
+                            <input className="field" placeholder="Bilan sanguin" value={docForm.title} onChange={(e) => setDocForm((f) => ({ ...f, title: e.target.value }))} />
+                            <input className="field" type="date" value={docForm.date} max={toISODate(new Date())} onChange={(e) => setDocForm((f) => ({ ...f, date: e.target.value }))} />
+                          </div>
+                          <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10 }}>
+                            <input key={docs.length} type="file" accept="application/pdf,image/jpeg,image/png,image/heic" onChange={(e) => setDocFile(e.target.files?.[0] ?? null)} />                            
+                            <button className="btn btn-primary btn-sm" disabled={docSaving} onClick={() => uploadDoc(p.id)}>
+                              {docSaving ? "Envoi…" : "Ajouter le document"}
+                            </button>
+                          </div>
+                          
+                          {docError && <p className="err" style={{ marginTop: 10, marginBottom: 0 }}>{docError}</p>}
+                          {viewDoc && <DocumentViewer doc={viewDoc} onClose={() => setViewDoc(null)} />}    
+                        </div>
+                        <div className="fact-k" style={{ marginBottom: 8 }}>Rendez-vous</div>                      
                         {appointments.filter((a) => a.patient_id === p.id).length === 0 ? (
                           <div className="meta">Aucun rendez-vous pour ce patient.</div>
                         ) : (
@@ -1851,6 +1961,8 @@ export default function SecretariatDashboard() {
           </div>
         </div>
       )}
+
+      {viewDoc && <DocumentViewer doc={viewDoc} onClose={() => setViewDoc(null)} />}
 
     </div>
   );

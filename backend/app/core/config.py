@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     STORAGE_BUCKET: str = "medical-platform-documents"
     STORAGE_ENDPOINT_URL: str | None = None
 
+
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_KEY: str = ""
+    SUPABASE_BUCKET: str = "documents"
+
+    
     # Durée par défaut d'un accès dossier accordé à un médecin
     RECORD_ACCESS_DEFAULT_HOURS: int = 24
 

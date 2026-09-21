@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import PatientShell, { parseLocal } from "@/components/PatientShell";
+import DocumentViewer from "@/components/DocumentViewer";
 
 type DossierData = {
   patient: any;
@@ -14,9 +15,10 @@ type DossierData = {
 };
 
 export default function DossierPage() {
-  const router = useRouter();
+  const    router = useRouter();
   const [data, setData] = useState<DossierData | null>(null);
   const [error, setError] = useState("");
+  const [viewDoc, setViewDoc] = useState<any>(null);
 
   useEffect(() => {
     if (!localStorage.getItem("medical_token")) {
@@ -147,9 +149,10 @@ export default function DossierPage() {
             </div>
             {data.documents.length > 0 ? (
               data.documents.map((item: any, i: number) => (
+             
                 <div className="ml-item" key={item.id ?? `document-${i}`}>
                   <div className="ml-rx">Doc</div>
-                  <div style={{ minWidth: 0 }}>
+                  <div style={{ flexGrow: 1, minWidth: 0 }}>       
                     <h3>{item.title ?? item.filename ?? item.name ?? "Document"}</h3>
                     <p>
                       {item.document_type ?? item.type ?? "Document médical"}
@@ -158,6 +161,13 @@ export default function DossierPage() {
                         : ""}
                     </p>
                   </div>
+                  <button
+                    className="ml-btn ml-btn-ghost"
+                    style={{ padding: "7px 14px", fontSize: 13, flexShrink: 0 }}
+                    onClick={() => setViewDoc(item)}
+                  >
+                    Ouvrir
+                  </button>                  
                 </div>
               ))
             ) : (
@@ -168,6 +178,7 @@ export default function DossierPage() {
           </article>
         </>
       )}
+      {viewDoc && <DocumentViewer doc={viewDoc} onClose={() => setViewDoc(null)} />}      
     </PatientShell>
   );
 }

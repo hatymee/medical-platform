@@ -10,6 +10,7 @@ from app.models.models import (
     User, Doctor, MedicalDocument, RecordAccessGrant, AccessStatus, AccessLog, DocumentCategory,
 )
 from app.schemas.schemas import MedicalDocumentOut
+from app.core.storage import upload_file
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -69,6 +70,8 @@ def list_patient_documents(
             raise HTTPException(status_code=403, detail="Aucun acces autorise a ce dossier")
         db.add(AccessLog(doctor_id=doctor.id, patient_id=patient_id, action="viewed_documents"))
         db.commit()
+    elif current_user.role == "secretary":
+        pass
     else:
         raise HTTPException(status_code=403, detail="Acces refuse")
 
@@ -116,7 +119,8 @@ async def upload_document(
         raise HTTPException(status_code=400, detail="Le fichier est vide.")
 
     stored_name = _safe_filename(file.filename or "document")
-    file_url = f"local://uploads/{patient_id}/{stored_name}"
+    
+    file_url = upload_file(patient_id, stored_name, contents, file.content_type)
 
     doc = MedicalDocument(
         patient_id=patient_id,
@@ -130,3 +134,30 @@ async def upload_document(
     db.commit()
     db.refresh(doc)
     return doc
+
+@router.get("/{document_id}/view")
+def view_document(
+    document_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("patient", "doctor", "secretary")),
+):
+    """Lien temporaire (1 h) pour consulter un document."""
+    from app.core.storage import signed_url
+
+    doc = db.get(MedicalDocument, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+
+    if current_user.role == "patient":
+        if not current_user.patient or current_user.patient.id != doc.patient_id:
+            raise HTTPException(status_code=403, detail="Acces refuse")
+
+    if current_user.role == "doctor":
+        doctor = _require_doctor(db, current_user)
+        db.add(AccessLog(doctor_id=doctor.id, patient_id=doc.patient_id, action="viewed_document"))
+        db.commit()
+
+    if doc.file_url.startswith("local://"):
+        raise HTTPException(status_code=410, detail="Ancien document sans fichier stocke")
+
+    return {"url": signed_url(doc.file_url)}
