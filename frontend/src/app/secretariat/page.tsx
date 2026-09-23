@@ -851,6 +851,7 @@ export default function SecretariatDashboard() {
             const Icon = NAV_ICONS[t.id];
             const on = activeTab === t.id || (t.id === "patients" && activeTab === "new_patient");
             return (
+              
               <button key={t.id} className={`side-link ${on ? "on" : ""}`} onClick={() => { setActiveTab(t.id); setDashFilter("all"); }}>
                 <Icon size={19} />
                 <span>{t.label}</span>
@@ -875,7 +876,7 @@ export default function SecretariatDashboard() {
         </div>
       </aside>
 
-      <div className="main-area"></div> 
+      <div className="main-area">
 
       <div className="band">
         <div className="wrap hero-row">
