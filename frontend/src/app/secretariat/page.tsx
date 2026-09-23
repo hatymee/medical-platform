@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import DocumentViewer from "@/components/DocumentViewer";
+import { Home, CalendarDays, Users, Stethoscope, Archive, Receipt, Bell, LogOut } from "lucide-react";
+
 
 
 type TabType = "dashboard" | "rdv" | "patients" | "new_patient" | "doctors" | "archives" | "settings" | "alerts" | "billing";
@@ -60,14 +62,24 @@ const DOC_CATEGORIES: Record<string, string> = {
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001/api/v1";
 
 const NAV: { id: TabType; label: string }[] = [
- 
   { id: "dashboard", label: "Journée" },
   { id: "rdv", label: "Rendez-vous" },
   { id: "patients", label: "Patients" },
   { id: "doctors", label: "Médecins" },
+  { id: "archives", label: "Archives" },
   { id: "billing", label: "Facturation" },
   { id: "alerts", label: "Alertes" },
 ];
+
+const NAV_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
+  dashboard: Home,
+  rdv: CalendarDays,
+  patients: Users,
+  doctors: Stethoscope,
+  archives: Archive,
+  billing: Receipt,
+  alerts: Bell,
+};
 
 function parseLocal(iso: string) {
   const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(iso);
@@ -623,177 +635,111 @@ export default function SecretariatDashboard() {
           min-height: 100vh;
           background: var(--paper);
           color: var(--navy);
+          display: grid;
+          grid-template-columns: 248px 1fr;
         }
+        .main-area { min-width: 0; }
 
-        .topbar {
-          position: sticky;
-          top: 0;
-          z-index: 100;
-          background: #fff;
-          border-bottom: 1px solid var(--line);
-          padding: 0 32px;
-          display: flex;
-          align-items: center;
-          gap: 28px;
+        .side {
+          position: sticky; top: 0; height: 100vh;
+          display: flex; flex-direction: column;
+          padding: 24px 16px;
+          background: linear-gradient(180deg, #0d3a6e 0%, #0a2540 100%);
+          color: #fff;
         }
-        .brand {
-          font-size: 21px;
-          font-weight: 800;
-          letter-spacing: -0.03em;
-          color: var(--navy);
-          padding: 16px 0;
-        }
-        .brand span { color: var(--blue); }
-
-        .tabs { display: flex; gap: 4px; flex-grow: 1; }
-        .tab {
-          position: relative;
-          border: none;
-          background: none;
-          font: inherit;
-          font-size: 15px;
-          font-weight: 600;
-          color: var(--muted);
-          padding: 20px 14px;
-          cursor: pointer;
-          transition: color 0.18s ease;
-        }
-        .tab:hover { color: var(--navy); }
-        .tab::after {
-          content: "";
-          position: absolute;
-          left: 12px;
-          right: 12px;
-          bottom: 0;
-          height: 3px;
-          border-radius: 3px 3px 0 0;
-          background: var(--blue);
-          transform: scaleX(0);
-          transform-origin: center;
-          transition: transform 0.28s cubic-bezier(0.34, 1.3, 0.64, 1);
-        }
-        .tab.on { color: var(--blue); }
-        .tab.on::after { transform: scaleX(1); }
-
-        .who { font-size: 14px; font-weight: 600; color: var(--muted); }
-        .signout {
-          border: none; background: none; font: inherit; font-size: 14px;
-          color: var(--muted); cursor: pointer; padding: 6px 0;
-          transition: color 0.18s ease;
-        }
-        .signout:hover { color: var(--red); }
-        
-        .menu-wrap { position: relative; }
-        .menu-trigger {
+        .side-brand { display: flex; align-items: center; gap: 12px; padding: 0 8px 28px; }
+        .side-logo {
+          width: 40px; height: 40px; border-radius: 11px;
           display: flex; align-items: center; justify-content: center;
-          width: 42px; height: 42px;
-          border: 1px solid transparent; background: none;
-          border-radius: 10px; cursor: pointer;
-          transition: background-color 0.16s ease, border-color 0.16s ease;
+          background: var(--blue); font-size: 26px; font-weight: 800;
+          box-shadow: 0 6px 16px rgba(24, 119, 224, 0.45);
+        }
+        .side-name { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; }
+        .side-name span { color: #5aa6f5; }
+        .side-tag { font-size: 11px; color: #9db4cc; margin-top: 1px; }
+
+        .side-nav { display: flex; flex-direction: column; gap: 4px; flex-grow: 1; }
+        .side-link {
+          display: flex; align-items: center; gap: 13px;
+          width: 100%; padding: 12px 14px; border: none; border-radius: 10px;
+          background: none; color: #c3d4e6; font: inherit; font-size: 15px; font-weight: 500;
+          text-align: left; cursor: pointer;
+          transition: background-color 0.16s ease, color 0.16s ease, transform 0.18s ease;
+        }
+        .side-link:hover { background: rgba(255, 255, 255, 0.07); color: #fff; transform: translateX(3px); }
+        .side-link.on { background: var(--blue); color: #fff; font-weight: 600; box-shadow: 0 6px 16px rgba(24, 119, 224, 0.35); }
+        .side-count {
+          margin-left: auto; font-style: normal; font-size: 12px; font-weight: 700;
+          background: rgba(255, 255, 255, 0.16); padding: 2px 8px; border-radius: 20px;
         }
 
-        .menu-trigger:hover { background: var(--blue-soft); border-color: var(--line); }
-
-        .burger { display: flex; flex-direction: column; justify-content: center; gap: 4px; width: 20px; height: 20px; }
-        .burger i {
-          display: block; height: 2px; width: 100%;
-          background: var(--navy); border-radius: 2px;
-          transition: transform 0.24s cubic-bezier(0.34, 1.3, 0.64, 1), opacity 0.16s ease;
+        .side-foot { border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+        .side-me {
+          display: flex; align-items: center; gap: 12px; width: 100%;
+          padding: 10px; border: none; border-radius: 10px; background: rgba(255, 255, 255, 0.06);
+          color: #fff; font: inherit; cursor: pointer; transition: background-color 0.16s ease;
         }
-        .burger.x i:nth-child(1) { transform: translateY(6px) rotate(45deg); }
-        .burger.x i:nth-child(2) { opacity: 0; }
-        .burger.x i:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
-
-        .menu-backdrop { position: fixed; inset: 0; z-index: 200; }
-        .menu-pop {
-          position: absolute; right: 0; top: calc(100% + 6px); z-index: 201;
-          min-width: 232px; padding: 6px;
-          background: #fff; border: 1px solid var(--line); border-radius: 12px;
-          box-shadow: 0 16px 40px rgba(10, 37, 64, 0.16);
-          animation: drop 0.18s cubic-bezier(0.22, 1.2, 0.36, 1);
+        .side-me:hover { background: rgba(255, 255, 255, 0.12); }
+        .side-avatar {
+          width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          background: #fff; color: var(--blue); font-weight: 800;
         }
-        @keyframes drop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-
-        .menu-head { padding: 10px 12px 8px; }
-        .menu-name { font-size: 14px; font-weight: 700; color: var(--navy); }
-        .menu-role { font-size: 12px; color: var(--muted); margin-top: 1px; }
-
-        .menu-pop button {
-          display: flex; align-items: center; justify-content: space-between;
-          width: 100%; border: none; background: none; font: inherit;
-          font-size: 14px; font-weight: 500; color: var(--navy); text-align: left;
-          padding: 10px 12px; border-radius: 8px; cursor: pointer;
-          transition: background-color 0.14s ease;
+        .side-me-name { font-size: 14px; font-weight: 700; }
+        .side-me-role { font-size: 12px; color: #9db4cc; }
+        .side-out {
+          display: flex; align-items: center; gap: 12px; width: 100%;
+          padding: 11px 14px; border: none; border-radius: 10px; background: none;
+          color: #9db4cc; font: inherit; font-size: 14px; cursor: pointer;
+          transition: color 0.16s ease, background-color 0.16s ease;
         }
-        .menu-pop button:hover { background: var(--blue-soft); }
-        .menu-danger { color: var(--red) !important; }
-        .menu-danger:hover { background: var(--red-bg) !important; }
-        .menu-count {
-          background: var(--blue-soft); color: var(--blue-dark);
-          font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 20px;
-        }
-        .menu-sep { height: 1px; background: var(--line); margin: 6px 4px; }
+        .side-out:hover { color: #ff9b9b; background: rgba(255, 100, 100, 0.1); }
         .ok { background: var(--green-bg); color: var(--green); padding: 13px 18px; border-radius: 10px; margin-bottom: 22px; font-size: 14px; font-weight: 600; }
-       
-        .band{
+
+        .band {
           background: linear-gradient(180deg, #e9f2fb 0%, var(--paper) 100%);
           padding: 32px 32px 0;
         }
-
-
-
         .wrap { max-width: 1180px; margin: 0 auto; width: 100%; }
         .main { padding: 28px 32px 56px; }
 
         .hero-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
-        .kicker {
-          font-size: 12px; font-weight: 700; letter-spacing: 0.09em;
-          color: var(--blue); margin: 0 0 8px;
-        }
-        .hero-title {
-          font-size: 32px; font-weight: 800; letter-spacing: -0.025em;
-          margin: 0 0 6px; line-height: 1.15;
-        }
+        .kicker { font-size: 12px; font-weight: 700; letter-spacing: 0.09em; color: var(--blue); margin: 0 0 8px; }
+        .hero-title { font-size: 32px; font-weight: 800; letter-spacing: -0.025em; margin: 0 0 6px; line-height: 1.15; }
         .hero-sub { font-size: 15px; color: var(--muted); margin: 0; }
 
         .btn {
           font: inherit; font-size: 14px; font-weight: 600;
-          border-radius: 9px; cursor: pointer;
-          padding: 11px 20px;
+          border-radius: 9px; cursor: pointer; padding: 11px 20px;
           border: 1px solid transparent;
-          transition: transform 0.16s cubic-bezier(0.34, 1.4, 0.64, 1),
-                      box-shadow 0.2s ease, background-color 0.18s ease, color 0.18s ease;
+          transition: transform 0.16s cubic-bezier(0.34, 1.4, 0.64, 1), box-shadow 0.2s ease, background-color 0.18s ease, color 0.18s ease;
         }
         .btn:active { transform: translateY(1px) scale(0.985); }
         .btn:focus-visible { outline: 3px solid rgba(24, 119, 224, 0.35); outline-offset: 2px; }
-
         .btn-primary { background: var(--blue); color: #fff; box-shadow: 0 2px 6px rgba(24, 119, 224, 0.28); }
         .btn-primary:hover { background: var(--blue-dark); transform: translateY(-2px); box-shadow: 0 8px 18px rgba(24, 119, 224, 0.34); }
         .btn-primary:disabled { opacity: 0.55; transform: none; box-shadow: none; cursor: default; }
-
         .btn-ghost { background: #fff; color: var(--navy); border-color: var(--line); }
         .btn-ghost:hover { border-color: var(--blue); color: var(--blue); transform: translateY(-2px); box-shadow: 0 6px 14px rgba(10, 37, 64, 0.09); }
-
         .btn-danger { background: #fff; color: var(--red); border-color: var(--line); }
         .btn-danger:hover { background: var(--red-bg); border-color: var(--red); transform: translateY(-2px); }
-
         .btn-sm { padding: 7px 14px; font-size: 13px; }
 
         .field {
-          width: 100%; box-sizing: border-box;
-          padding: 11px 14px; font: inherit; font-size: 14px;
-          color: var(--navy); background: #fff;
-          border: 1px solid var(--line); border-radius: 9px;
+          width: 100%; box-sizing: border-box; padding: 11px 14px; font: inherit; font-size: 14px;
+          color: var(--navy); background: #fff; border: 1px solid var(--line); border-radius: 9px;
           transition: border-color 0.18s ease, box-shadow 0.18s ease;
         }
         .field:hover { border-color: #c9d9ea; }
         .field:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 4px rgba(24, 119, 224, 0.14); }
         .lab { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
-
-        .card {
-          background: #fff; border: 1px solid var(--line);
-          border-radius: 14px; padding: 24px;
+        select.field {
+          appearance: none; -webkit-appearance: none; padding-right: 40px; cursor: pointer;
+          background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235a7590' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+          background-repeat: no-repeat; background-position: right 14px center;
         }
+
+        .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 24px; }
         .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 28px; }
         .stat {
           background: #fff; border: 1px solid var(--line); border-radius: 14px;
@@ -801,15 +747,10 @@ export default function SecretariatDashboard() {
           animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
           transition: transform 0.18s ease, box-shadow 0.2s ease, border-color 0.18s ease;
         }
-        .stat:nth-child(1) { animation-delay: 0.02s; }
-        .stat:nth-child(2) { animation-delay: 0.08s; }
-        .stat:nth-child(3) { animation-delay: 0.14s; }
-        .stat:nth-child(4) { animation-delay: 0.2s; }
         .stat:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(10, 37, 64, 0.09); border-color: #cddef1; }
         .stat.on { border-color: var(--blue); box-shadow: 0 6px 18px rgba(24, 119, 224, 0.16); }
         .stat-k { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
         .stat-v { font-size: 34px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-
         @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
         .panel { background: #fff; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
@@ -817,10 +758,9 @@ export default function SecretariatDashboard() {
         .panel-title { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; margin: 0; }
 
         .row {
-          width: 100%; display: flex; align-items: center; gap: 18px;
-          padding: 15px 24px; border: none; border-top: 1px solid var(--line);
-          background: #fff; font: inherit; font-size: 14px; text-align: left; cursor: pointer;
-          transition: background-color 0.16s ease, padding-left 0.2s ease;
+          width: 100%; display: flex; align-items: center; gap: 18px; padding: 15px 24px;
+          border: none; border-top: 1px solid var(--line); background: #fff; font: inherit; font-size: 14px;
+          text-align: left; cursor: pointer; transition: background-color 0.16s ease, padding-left 0.2s ease;
         }
         .row:first-of-type { border-top: none; }
         .row:hover { background: var(--blue-soft); padding-left: 30px; }
@@ -828,7 +768,7 @@ export default function SecretariatDashboard() {
         .row-who { flex-grow: 1; font-weight: 700; min-width: 0; }
         .row-doc { width: 200px; color: var(--muted); flex-shrink: 0; }
 
-        .line-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 24px; border-top: 1px solid var(--line); transition: background-color 0.16s ease; }
+        .line-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 24px; border-top: 1px solid var(--line); }
         .line-item:hover { background: #fafcfe; }
         .name { font-weight: 700; font-size: 15px; }
         .meta { font-size: 13px; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
@@ -841,63 +781,38 @@ export default function SecretariatDashboard() {
         .p-no_show { background: #eef2f6; color: var(--muted); }
 
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
-        .aptcard {
-          background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 20px;
-          transition: transform 0.18s ease, box-shadow 0.2s ease, border-color 0.18s ease;
-        }
-        .aptcard:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(10, 37, 64, 0.09); border-color: #cddef1; }
+        .aptcard { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 20px; transition: transform 0.18s ease, box-shadow 0.2s ease; }
+        .aptcard:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(10, 37, 64, 0.09); }
         .aptcard-when { font-size: 15px; font-weight: 700; color: var(--blue); margin-top: 10px; font-variant-numeric: tabular-nums; }
 
-        .folder {
-          border-top: 1px solid var(--line); padding: 20px 24px;
-          background: linear-gradient(180deg, var(--blue-soft), #fff);
-          animation: unfold 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-        }
-        @keyframes unfold { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+        .folder { border-top: 1px solid var(--line); padding: 20px 24px; background: linear-gradient(180deg, var(--blue-soft), #fff); }
         .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 18px; margin-bottom: 18px; }
         .fact-k { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
         .fact-v { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
         .days { display: flex; gap: 8px; flex-wrap: wrap; }
         .day {
-          font: inherit; cursor: pointer;
-          display: flex; flex-direction: column; align-items: center; gap: 2px;
-          min-width: 52px; padding: 9px 6px;
-          background: #fff; color: var(--navy);
-          border: 1px solid var(--line); border-radius: 11px;
-          transition: transform 0.16s cubic-bezier(0.34, 1.4, 0.64, 1),
-                      background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.2s ease;
+          font: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px;
+          min-width: 52px; padding: 9px 6px; background: #fff; color: var(--navy);
+          border: 1px solid var(--line); border-radius: 11px; transition: transform 0.16s ease, background-color 0.16s ease;
         }
-        .day:hover { border-color: var(--blue); color: var(--blue); transform: translateY(-3px); box-shadow: 0 6px 14px rgba(10, 37, 64, 0.1); }
-        .day:active { transform: translateY(0) scale(0.97); }
-        .day.on {
-          background: var(--blue); border-color: var(--blue); color: #fff;
-          box-shadow: 0 6px 16px rgba(24, 119, 224, 0.32);
-        }
-        .day-top { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; opacity: 0.72; }
-        .day-num { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
-        .day-more .day-num { font-size: 15px; }
-
+        .day:hover { border-color: var(--blue); color: var(--blue); transform: translateY(-3px); }
+        .day.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+        .day-top { font-size: 11px; font-weight: 700; opacity: 0.72; }
+        .day-num { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
         .date-echo { font-size: 13px; font-weight: 600; color: var(--blue); margin: 10px 0 0; }
         .hint { font-size: 13px; color: var(--muted); margin: 0; }
 
-        select.field {
-          appearance: none; -webkit-appearance: none;
-          padding-right: 40px; cursor: pointer;
-          background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235a7590' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
-          background-repeat: no-repeat;
-          background-position: right 14px center;
-        }
-
         .slots { display: flex; flex-wrap: wrap; gap: 8px; }
-        .slot.taken {
-          background: #f2f5f8; color: #9aabbd; border-color: #e8edf3;
-          cursor: not-allowed; text-decoration: line-through;
+        .slot {
+          font: inherit; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
+          padding: 8px 14px; border-radius: 8px; cursor: pointer;
+          background: #fff; color: var(--navy); border: 1px solid var(--line);
         }
-        .slot.taken:hover { transform: none; border-color: #e8edf3; color: #9aabbd; }
+        .slot:hover { border-color: var(--blue); color: var(--blue); }
+        .slot.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+        .slot.taken { background: #f2f5f8; color: #9aabbd; border-color: #e8edf3; cursor: not-allowed; text-decoration: line-through; }
         .slot.past { background: #fafbfc; color: #b8c4d0; border-color: #eef2f6; cursor: not-allowed; }
-        .slot.past:hover { transform: none; border-color: #eef2f6; color: #b8c4d0; }
-
         .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px; font-size: 12px; color: var(--muted); }
         .legend span { display: inline-flex; align-items: center; }
         .legend-none { color: var(--amber); font-weight: 600; }
@@ -905,90 +820,62 @@ export default function SecretariatDashboard() {
         .dot-free { background: var(--blue); }
         .dot-taken { background: #9aabbd; }
         .dot-past { background: #d5dee7; }
-        .slot {
-          font: inherit; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
-          padding: 8px 14px; border-radius: 8px; cursor: pointer;
-          background: #fff; color: var(--navy); border: 1px solid var(--line);
-          transition: transform 0.15s ease, background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
-        }
-        .slot:hover { border-color: var(--blue); color: var(--blue); transform: translateY(-2px); }
-        .slot.on { background: var(--blue); border-color: var(--blue); color: #fff; }
 
         .overlay {
-          position: fixed; inset: 0; z-index: 1000; padding: 24px;
-          background: rgba(10, 37, 64, 0.42);
+          position: fixed; inset: 0; z-index: 1000; padding: 24px; background: rgba(10, 37, 64, 0.42);
           display: flex; align-items: center; justify-content: center;
-          animation: fade 0.2s ease;
         }
-        @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
         .modal {
-          background: #fff; border-radius: 18px; padding: 28px;
-          width: 470px; max-width: 100%; max-height: 90vh; overflow-y: auto;
-          box-shadow: 0 30px 70px rgba(10, 37, 64, 0.28);
-          animation: pop 0.28s cubic-bezier(0.22, 1.2, 0.36, 1);
+          background: #fff; border-radius: 18px; padding: 28px; width: 470px; max-width: 100%;
+          max-height: 90vh; overflow-y: auto; box-shadow: 0 30px 70px rgba(10, 37, 64, 0.28);
         }
-        @keyframes pop { from { opacity: 0; transform: translateY(18px) scale(0.97); } to { opacity: 1; transform: none; } }
         .modal-title { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 20px; }
         .modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
 
         .alert { background: var(--red-bg); color: var(--red); padding: 13px 18px; border-radius: 10px; margin-bottom: 22px; font-size: 14px; font-weight: 600; }
         .empty { padding: 40px 24px; text-align: center; color: var(--muted); font-size: 14px; }
-        .err { color: var(--red); font-size: 14px; font-weight: 600; margin: 0 0 16px; }
-
-        @media (prefers-reduced-motion: reduce) {
-          .shell *, .shell *::after { animation: none !important; transition: none !important; }
-        }
+        .err { color: var(--red); font-size: 14px; font-weight: 600; margin: 0 0 16px; }      
       `}</style>
 
-      <header className="topbar">
-        <div className="brand">Med<span>Link</span></div>
-        <nav className="tabs">
-          {NAV.map((t) => (
-            <button
-              key={t.id}
-              className={`tab ${activeTab === t.id || (t.id === "patients" && activeTab === "new_patient") ? "on" : ""}`}
-              onClick={() => { setActiveTab(t.id); setDashFilter("all"); }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
+      <aside className="side">
+        <div className="side-brand">
+          <div className="side-logo">+</div>
+          <div>
+            <div className="side-name">Med<span>Link</span></div>
+            <div className="side-tag">Votre santé, notre priorité</div>
+          </div>
+        </div>
 
+        <div className="side-nav">
+          {NAV.map((t) => {
+            const Icon = NAV_ICONS[t.id];
+            const on = activeTab === t.id || (t.id === "patients" && activeTab === "new_patient");
+            return (
+              <button key={t.id} className={`side-link ${on ? "on" : ""}`} onClick={() => { setActiveTab(t.id); setDashFilter("all"); }}>
+                <Icon size={19} />
+                <span>{t.label}</span>
+                {t.id === "archives" && inactivePatients.length > 0 && <em className="side-count">{inactivePatients.length}</em>}
+              </button>
+            );
+          })}
+        </div>
 
-                <div className="menu-wrap">
-          <button className="menu-trigger" onClick={() => setMenuOpen((v) => !v)} aria-label="Menu">
-            <span className={`burger ${menuOpen ? "x" : ""}`}>
-              <i /><i /><i />
-            </span>
+        <div className="side-foot">
+          <button className="side-me" onClick={() => { setActiveTab("settings"); setSettingsMsg(null); }}>
+            <div className="side-avatar">S</div>
+            <div style={{ textAlign: "left" }}>
+              <div className="side-me-name">Secrétaire</div>
+              <div className="side-me-role">Paramètres du compte</div>
+            </div>
           </button>
-          {menuOpen && (
-            <>
-              <div className="menu-backdrop" onClick={() => setMenuOpen(false)} />
-              <div className="menu-pop">
-                <div className="menu-head">
-                  <div className="menu-name">Secrétariat</div>
-                  <div className="menu-role">Compte connecté</div>
-                </div>
-                <div className="menu-sep" />
-                <button onClick={() => { setActiveTab("archives"); setMenuOpen(false); }}>
-                  Archives
-                  {inactivePatients.length > 0 && <span className="menu-count">{inactivePatients.length}</span>}
-                </button>
-                <button onClick={() => { setActiveTab("settings"); setMenuOpen(false); setSettingsMsg(null); }}>
-                  Paramètres
-                </button>
-                <div className="menu-sep" />
-                <button className="menu-danger" onClick={logout}>Se déconnecter</button>
-              </div>
-            </>
-          )}
-        </div> 
+          <button className="side-out" onClick={logout}>
+            <LogOut size={18} />
+            <span>Déconnexion</span>
+          </button>
+        </div>
+      </aside>
 
-
-
-
-        
-      </header>
+      <div className="main-area"></div> 
 
       <div className="band">
         <div className="wrap hero-row">
@@ -1211,7 +1098,6 @@ export default function SecretariatDashboard() {
                           </div>
                           
                           {docError && <p className="err" style={{ marginTop: 10, marginBottom: 0 }}>{docError}</p>}
-                          {viewDoc && <DocumentViewer doc={viewDoc} onClose={() => setViewDoc(null)} />}    
                         </div>
                         <div className="fact-k" style={{ marginBottom: 8 }}>Rendez-vous</div>                      
                         {appointments.filter((a) => a.patient_id === p.id).length === 0 ? (
@@ -1481,11 +1367,11 @@ export default function SecretariatDashboard() {
                 </p>
               </div>
           )}
-
-
-          
+        
         </div>
       </main>
+      </div>
+      
 
       {isRdvModalOpen && (
         <div className="overlay" onClick={closeRdvModal}>
