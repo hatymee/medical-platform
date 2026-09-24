@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import DocumentViewer from "@/components/DocumentViewer";
 import { Home, CalendarDays, Users, Stethoscope, Archive, Receipt, Bell, LogOut } from "lucide-react";
-
+import PatientFile from "@/components/secretariat/PatientFile";
+import SecretariatTopbar from "@/components/secretariat/SecretariatTopbar";
 
 
 type TabType = "dashboard" | "rdv" | "patients" | "new_patient" | "doctors" | "archives" | "settings" | "alerts" | "billing";
@@ -66,7 +67,7 @@ const NAV: { id: TabType; label: string }[] = [
   { id: "rdv", label: "Rendez-vous" },
   { id: "patients", label: "Patients" },
   { id: "doctors", label: "Médecins" },
-  { id: "archives", label: "Archives" },
+  { id: "archives", label: "Dossiers" },
   { id: "billing", label: "Facturation" },
   { id: "alerts", label: "Alertes" },
 ];
@@ -364,6 +365,12 @@ export default function SecretariatDashboard() {
     }
   }, [openPatientId]);  
 
+  useEffect(() => {
+    const onPop = () => setOpenPatientId(null);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   function logout() {
     localStorage.clear();
     router.push("/connexion");
@@ -614,7 +621,8 @@ export default function SecretariatDashboard() {
     ? slotCells(editingAppointment.doctor_id, rescheduleDate, rescheduleSlots, editingAppointment.id)
     : [];
   const reFree = reCells.filter((c) => !c.taken && !c.past).length;
-
+  const alertCount = appointments.filter((a) => a.status === "scheduled" && parseLocal(a.scheduled_at).getTime() >= Date.now()).length;
+  const openPatient = openPatientId ? patients.find((p) => p.id === openPatientId) ?? null : null;
   return (
     <div className="shell">
       <style jsx>{`
@@ -694,6 +702,18 @@ export default function SecretariatDashboard() {
           transition: color 0.16s ease, background-color 0.16s ease;
         }
         .side-out:hover { color: #ff9b9b; background: rgba(255, 100, 100, 0.1); }
+        .side-alert { background: #e5484d; color: #fff; }
+        .side-promo {
+          margin: 16px 0; padding: 16px; border-radius: 14px;
+          background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .side-promo-head { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 800; }
+        .side-promo-logo {
+          width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+          background: var(--blue); font-size: 18px;
+        }
+        .side-promo p { margin: 10px 0 0; font-size: 13px; line-height: 1.5; color: #c3d4e6; }
+        .band { padding-top: 24px; }
         .ok { background: var(--green-bg); color: var(--green); padding: 13px 18px; border-radius: 10px; margin-bottom: 22px; font-size: 14px; font-weight: 600; }
 
         .band {
@@ -852,13 +872,19 @@ export default function SecretariatDashboard() {
             const on = activeTab === t.id || (t.id === "patients" && activeTab === "new_patient");
             return (
               
-              <button key={t.id} className={`side-link ${on ? "on" : ""}`} onClick={() => { setActiveTab(t.id); setDashFilter("all"); }}>
+              <button key={t.id} className={`side-link ${on ? "on" : ""}`} onClick={() => { setActiveTab(t.id); setDashFilter("all"); setOpenPatientId(null); }}>
                 <Icon size={19} />
                 <span>{t.label}</span>
                 {t.id === "archives" && inactivePatients.length > 0 && <em className="side-count">{inactivePatients.length}</em>}
+                {t.id === "alerts" && alertCount > 0 && <em className="side-count side-alert">{alertCount}</em>}
               </button>
             );
           })}
+        </div>
+
+        <div className="side-promo">
+          <div className="side-promo-head"><span className="side-promo-logo">+</span> MedLink</div>
+          <p>Une gestion médicale plus simple, plus rapide, plus humaine.</p>
         </div>
 
         <div className="side-foot">
@@ -866,7 +892,7 @@ export default function SecretariatDashboard() {
             <div className="side-avatar">S</div>
             <div style={{ textAlign: "left" }}>
               <div className="side-me-name">Secrétaire</div>
-              <div className="side-me-role">Paramètres du compte</div>
+              <div className="side-me-role">Secrétaire du cabinet</div>
             </div>
           </button>
           <button className="side-out" onClick={logout}>
@@ -877,8 +903,26 @@ export default function SecretariatDashboard() {
       </aside>
 
       <div className="main-area">
+        <SecretariatTopbar
+          alertCount={alertCount}
+          onSearch={(q) => {
+            const s = q.toLowerCase();
+            setActiveTab("patients");
+            setOpenPatientId(null);
+            setSearchQuery(q);
+            setHasSearched(true);
+            setSearchResults(activePatients.filter((p) =>
+              (p.national_id || "").toLowerCase().includes(s) ||
+              `${p.first_name} ${p.last_name}`.toLowerCase().includes(s) ||
+              `${p.last_name} ${p.first_name}`.toLowerCase().includes(s)
+            ));
+          }}
+          onAlerts={() => { setActiveTab("alerts"); setOpenPatientId(null); }}
+          onProfile={() => { setActiveTab("settings"); setOpenPatientId(null); setSettingsMsg(null); }}
+        />
 
-      <div className="band">
+         {!(activeTab === "patients" && openPatient) && (
+         <div className="band">
         <div className="wrap hero-row">
           <div>
             <p className="kicker">PLATEFORME MÉDICALE SÉCURISÉE</p>
@@ -923,7 +967,8 @@ export default function SecretariatDashboard() {
         </div>
       </div>
 
-      <main className="main">
+         )}
+         <main className="main">
         <div className="wrap">
           {loadError && <div className="alert">{loadError}</div>}
 
@@ -1015,7 +1060,26 @@ export default function SecretariatDashboard() {
             </>
           )}
 
-          {activeTab === "patients" && (
+          {activeTab === "patients" && openPatient && (
+            <PatientFile
+              patient={openPatient}
+              appointments={appointments}
+              invoices={invoices}
+              docs={docs}
+              doctorName={doctorName}
+              onBack={() => window.history.back()}
+              onNewAppointment={() => openRdvForPatient(openPatient.id)}
+              onArchive={() => { setStatusTarget({ patient: openPatient, action: "archived" }); setStatusReason(""); }}
+              onRemove={() => { setStatusTarget({ patient: openPatient, action: "removed" }); setStatusReason(""); }}
+              onViewDoc={(d) => setViewDoc(d)}
+              onDownloadDoc={openDoc}
+                 onDocsChanged={() => loadDocs(openPatient.id)}
+                 onViewAppointment={(a) => setSelectedAppointment(a)}
+                 onPatientUpdated={loadAll}
+            />
+          )}
+
+          {activeTab === "patients" && !openPatient && (
             <div className="panel">
               <div className="panel-head">
                 <h2 className="panel-title">
@@ -1044,7 +1108,7 @@ export default function SecretariatDashboard() {
                         <div className="meta">CIN {p.national_id || "—"} · groupe {p.blood_group}</div>
                       </div>
                       <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                        <button className="btn btn-ghost btn-sm" onClick={() => setOpenPatientId(openPatientId === p.id ? null : p.id)}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => { window.history.pushState({ patient: p.id }, ""); setOpenPatientId(p.id); }}>
                           {openPatientId === p.id ? "Replier" : "Dossier"}
                         </button>
                         <button className="btn btn-primary btn-sm" onClick={() => openRdvForPatient(p.id)}>Rendez-vous</button>

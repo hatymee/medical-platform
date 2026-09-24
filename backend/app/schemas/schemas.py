@@ -54,6 +54,8 @@ class PatientProfile(BaseModel):
     status: str = "active"
     status_reason: str | None = None
     status_changed_at: datetime | None = None
+    email: str | None = None
+    phone: str | None = None
 
     class Config:
         from_attributes = True
@@ -79,6 +81,7 @@ class SecretaryPatientUpdate(BaseModel):
     address: str | None = None
     sex: str | None = None
     blood_group: str | None = None
+    date_of_birth: date | None = None    
 
 
 # --------------------------- CLINICS / DOCTORS ---------------------------
@@ -170,7 +173,7 @@ class SecretariatAppointmentCreate(AppointmentCreate):
 
 class AppointmentOut(BaseModel):
     id: str
-    
+    doctor_id: str
     patient_id: str
     scheduled_at: datetime
     status: str

@@ -97,6 +97,15 @@ class Patient(Base):
     user: Mapped["User"] = relationship(back_populates="patient")
 
 
+    @property
+    def email(self) -> str | None:
+        return self.user.email if self.user else None
+
+    @property
+    def phone(self) -> str | None:
+        return self.user.phone if self.user else None
+
+
 class Doctor(Base):
     __tablename__ = "doctors"
 
