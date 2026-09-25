@@ -39,7 +39,7 @@ export default function SecretariatTopbar({ alertCount, onSearch, onAlerts, onPr
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Rechercher un patient par nom ou CIN"
+          placeholder="Rechercher un patient, un rendez-vous, un dossier..."
           aria-label="Rechercher un patient"
         />
       </form>

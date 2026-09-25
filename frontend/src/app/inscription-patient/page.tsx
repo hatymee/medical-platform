@@ -2,12 +2,16 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Mail, Lock, Eye, EyeOff, CircleAlert } from "lucide-react";
 import { api, saveSession, TokenResponse } from "@/lib/api";
+import AuthLayout from "@/components/AuthLayout";
 
 export default function PatientRegistration() {
   const router = useRouter();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPwd, setShowPwd] = useState(false);
+  const today = new Date().toISOString().slice(0, 10);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -36,60 +40,62 @@ export default function PatientRegistration() {
   }
 
   return (
-    <main className="authPage">
-      <section className="authPanel">
-        <a className="brand" href="/">MedLink</a>
-        <div className="authContent">
-          <p className="eyebrow">ESPACE PATIENT</p>
-          <h1>Créer mon compte</h1>
-          <form onSubmit={submit}>
-            <div className="formRow">
-              <div>
-                <label>Prénom</label>
-                <input name="firstName" required />
-              </div>
-              <div>
-                <label>Nom</label>
-                <input name="lastName" required />
-              </div>
-            </div>
+    <AuthLayout headline="Votre dossier vous accompagne, sous votre contrôle.">
+      <h1>Créer mon compte</h1>
+      <p className="au-lead">Quelques informations suffisent. Le secrétariat complètera votre dossier lors de votre première visite.</p>
 
-            <label>E-mail</label>
-            <input name="email" type="email" required />
-
-            <label>Date de naissance</label>
-            <input name="birthDate" type="date" required />
-
-            <label>Sexe</label>
-            <select name="sex">
-              <option value="">Non précisé</option>
-              <option value="female">Femme</option>
-              <option value="male">Homme</option>
-            </select>
-
-            <label>Mot de passe</label>
-            <input name="password" type="password" minLength={8} required />
-
-            {error && <p className="formError">{error}</p>}
-
-            <button className="button authButton" disabled={loading}>
-              {loading ? "Création..." : "Créer mon compte"}
-            </button>
-          </form>
-
-          {/* Lien de connexion placé directement sous le formulaire */}
-          <p className="formFooterNote" style={{ marginTop: "20px", textAlign: "center" }}>
-            Vous avez déjà un compte ?{" "}
-            <a href="/connexion" style={{ color: "#0284c7", fontWeight: 600, textDecoration: "none" }}>
-              Se connecter
-            </a>
-          </p>
+      <form onSubmit={submit}>
+        <div className="au-row">
+          <div>
+            <label className="au-label" htmlFor="firstName">Prénom</label>
+            <div className="au-field"><input id="firstName" className="au-input plain" name="firstName" autoComplete="given-name" required /></div>
+          </div>
+          <div>
+            <label className="au-label" htmlFor="lastName">Nom</label>
+            <div className="au-field"><input id="lastName" className="au-input plain" name="lastName" autoComplete="family-name" required /></div>
+          </div>
         </div>
-      </section>
-      <aside className="authAside">
-        <p className="eyebrow">MEDLINK</p>
-        <h2>Votre dossier vous accompagne, sous votre contrôle.</h2>
-      </aside>
-    </main>
+
+        <label className="au-label" htmlFor="email">Adresse e-mail</label>
+        <div className="au-field">
+          <Mail size={18} />
+          <input id="email" className="au-input" name="email" type="email" autoComplete="email" placeholder="vous@exemple.com" required />
+        </div>
+
+        <div className="au-row">
+          <div>
+            <label className="au-label" htmlFor="birthDate">Date de naissance</label>
+            <div className="au-field"><input id="birthDate" className="au-input plain" name="birthDate" type="date" max={today} required /></div>
+          </div>
+          <div>
+            <label className="au-label" htmlFor="sex">Sexe</label>
+            <div className="au-field">
+              <select id="sex" className="au-input plain" name="sex" defaultValue="">
+                <option value="">Non précisé</option>
+                <option value="F">Femme</option>
+                <option value="M">Homme</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <label className="au-label" htmlFor="password">Mot de passe</label>
+        <div className="au-field">
+          <Lock size={18} />
+          <input id="password" className="au-input" name="password" type={showPwd ? "text" : "password"} minLength={8} autoComplete="new-password" placeholder="Huit caractères minimum" required />
+          <button type="button" className="au-eye" onClick={() => setShowPwd((v) => !v)} aria-label={showPwd ? "Masquer le mot de passe" : "Afficher le mot de passe"}>
+            {showPwd ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        </div>
+
+        {error && <p className="au-error"><CircleAlert size={18} style={{ flexShrink: 0 }} />{error}</p>}
+
+        <button className="au-btn" disabled={loading}>
+          {loading ? "Création…" : "Créer mon compte"}
+        </button>
+      </form>
+
+      <p className="au-hint">Vous avez déjà un compte ? <a href="/connexion">Se connecter</a></p>
+    </AuthLayout>
   );
 }

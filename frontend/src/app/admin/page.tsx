@@ -3,6 +3,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import PatientShell from "@/components/PatientShell";
+import { Plus, Stethoscope, UserRound, ShieldCheck } from "lucide-react";
+
+const ADMIN_NAV = [{ href: "/admin", label: "Mon cabinet" }];
 
 type Staff = {
   id: string;
@@ -142,29 +146,88 @@ export default function AdminPage() {
     setManageError(""); setManageMsg("");
   }
 
-  function logout() {
-    localStorage.clear();
-    router.push("/connexion");
-  }
+  const activeCount = [...doctors, ...secretaries].filter((s) => s.is_active).length;
+  const initialsOf = (s: Staff) => `${(s.first_name || "?")[0]}${(s.last_name || "")[0] ?? ""}`.toUpperCase();
+
+  const staffTable = (list: Staff[], kind: "doctor" | "secretary") =>
+    list.length === 0 ? (
+      <div className="empty">
+        {kind === "doctor" ? "Aucun médecin rattaché au cabinet." : "Aucun compte de secrétariat."}
+      </div>
+    ) : (
+      <div className="tbl-wrap">
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>{kind === "doctor" ? "Médecin" : "Secrétaire"}</th>
+              <th>Email</th>
+              {kind === "doctor" && <th>Spécialité</th>}
+              <th>Statut</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((s) => (
+              <tr key={s.id} className={s.is_active ? "" : "off"}>
+                <td>
+                  <div className="who">
+                    <span className="avatar">{initialsOf(s)}</span>
+                    <span className="name">{kind === "doctor" ? "Dr. " : ""}{s.first_name} {s.last_name}</span>
+                  </div>
+                </td>
+                <td className="muted">{s.email}</td>
+                {kind === "doctor" && <td>{s.specialty || <span className="muted">Médecine générale</span>}</td>}
+                <td>
+                  <span className={`pill ${s.is_active ? "pill-on" : ""}`}>{s.is_active ? "Actif" : "Désactivé"}</span>
+                </td>
+                <td style={{ textAlign: "right" }}>
+                  <button className="btn ghost sm" onClick={() => openManage(s)}>Gérer</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
 
   return (
-    <div className="wrap">
+    <PatientShell
+      active="/admin"
+      nav={ADMIN_NAV}
+      home="/admin"
+      roleLabel="Administrateur"
+      eyebrow="ESPACE CABINET"
+      status={error ? "error" : loading ? "loading" : "ready"}
+      error={error}
+      firstName={clinic?.name ?? "Cabinet"}
+      lastName=""
+      title={clinic?.name ?? "Mon cabinet"}
+      subtitle={`${doctors.length} médecin(s) et ${secretaries.length} secrétaire(s) rattachés`}
+    >
       <style jsx>{`
-        .wrap { min-height: 100vh; background: #f5f9fd; color: #0a2540; padding: 40px 32px 64px; }
-        .inner { max-width: 980px; margin: 0 auto; }
-        .top { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 32px; }
-        .kicker { font-size: 12px; font-weight: 700; letter-spacing: 0.09em; color: #1877e0; margin: 0 0 8px; }
-        h1 { font-size: 32px; font-weight: 800; letter-spacing: -0.025em; margin: 0 0 6px; }
-        .sub { font-size: 15px; color: #5a7590; margin: 0; }
-        .card { background: #fff; border: 1px solid #e1eaf3; border-radius: 14px; overflow: hidden; margin-bottom: 20px; }
-        .head { padding: 18px 24px; border-bottom: 1px solid #e1eaf3; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-        h2 { font-size: 17px; font-weight: 700; margin: 0; }
-        .item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 24px; border-top: 1px solid #e1eaf3; }
-        .item:first-of-type { border-top: none; }
-        .name { font-weight: 700; font-size: 15px; }
-        .meta { font-size: 13px; color: #5a7590; margin-top: 2px; }
+        .kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
+        .kpi { display: flex; align-items: center; gap: 16px; padding: 18px 20px; background: #fff; border: 1px solid #e1eaf3; border-radius: 14px; }
+        .kpi-ic { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .kpi-ic.blue { background: #eaf3fd; color: #1877e0; }
+        .kpi-ic.green { background: #e3f5ea; color: #1a7f4b; }
+        .kpi-ic.amber { background: #fbf0de; color: #a86a12; }
+        .kpi-k { display: block; font-size: 13px; color: #5a7590; }
+        .kpi-v { display: block; font-size: 24px; font-weight: 800; margin-top: 2px; }
+        .card { background: #fff; border: 1px solid #e1eaf3; border-radius: 14px; overflow: hidden; margin-bottom: 18px; }
+        .head { padding: 16px 22px; border-bottom: 1px solid #e1eaf3; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+        h2 { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; margin: 0; }
+        .tbl-wrap { overflow-x: auto; }
+        .tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .tbl th { text-align: left; padding: 12px 22px; font-size: 13px; font-weight: 500; color: #5a7590; background: #f7fafd; border-bottom: 1px solid #e1eaf3; white-space: nowrap; }
+        .tbl td { padding: 12px 22px; border-bottom: 1px solid #e1eaf3; vertical-align: middle; white-space: nowrap; }
+        .tbl tr:last-child td { border-bottom: none; }
+        .tbl tr.off td { opacity: 0.55; }
+        .who { display: flex; align-items: center; gap: 12px; }
+        .avatar { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: #eaf3fd; color: #1877e0; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+        .name { font-weight: 600; font-size: 15px; }
+        .muted { color: #5a7590; }
+        @media (max-width: 900px) { .kpis { grid-template-columns: 1fr; } }
         .empty { padding: 32px 24px; text-align: center; color: #5a7590; font-size: 14px; }
-        .off { opacity: 0.5; }
         .pill { padding: 4px 11px; border-radius: 7px; font-size: 12px; font-weight: 700; background: #eef2f6; color: #5a7590; }
         .btn { font: inherit; font-size: 14px; font-weight: 600; border-radius: 9px; cursor: pointer; padding: 11px 20px; border: 1px solid transparent; transition: transform 0.16s ease, background-color 0.18s ease; }
         .btn:hover { transform: translateY(-2px); }
@@ -187,75 +250,44 @@ export default function AdminPage() {
         .ok { color: #1a7f4b; font-size: 14px; font-weight: 600; margin: 16px 0 0; }
         .alert { background: #fcebeb; color: #cf3a3a; padding: 13px 18px; border-radius: 10px; font-size: 14px; font-weight: 600; }
         .block { padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid #e1eaf3; }
+
+        .meta { font-size: 13px; color: #5a7590; margin-top: 2px; }
+        .pill.pill-on { background: #e3f5ea; color: #1a7f4b; }
       `}</style>
 
-      <div className="inner">
-        <div className="top">
-          <div>
-            <p className="kicker">ADMINISTRATION DU CABINET</p>
-            <h1>{clinic?.name ?? "Cabinet"}</h1>
-            <p className="sub">
-              {loading ? "Chargement…" : `${doctors.length} médecin(s) · ${secretaries.length} secrétaire(s)`}
-            </p>
-          </div>
-          <button className="btn ghost" onClick={logout}>Se déconnecter</button>
+      <div className="kpis">
+        <div className="kpi">
+          <span className="kpi-ic blue"><Stethoscope size={22} /></span>
+          <span><span className="kpi-k">Médecins</span><span className="kpi-v">{doctors.length}</span></span>
         </div>
+        <div className="kpi">
+          <span className="kpi-ic amber"><UserRound size={22} /></span>
+          <span><span className="kpi-k">Secrétaires</span><span className="kpi-v">{secretaries.length}</span></span>
+        </div>
+        <div className="kpi">
+          <span className="kpi-ic green"><ShieldCheck size={22} /></span>
+          <span><span className="kpi-k">Comptes actifs</span><span className="kpi-v">{activeCount}</span></span>
+        </div>
+      </div>
 
-        {error && <div className="alert">{error}</div>}
+      <div className="card">
+        <div className="head">
+          <h2><Stethoscope size={20} color="#1877e0" /> Médecins</h2>
+          <button className="btn primary sm" onClick={() => { setOpen("doctor"); setFormError(""); }}>
+            <Plus size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />Ajouter un médecin
+          </button>
+        </div>
+        {staffTable(doctors, "doctor")}
+      </div>
 
-        {!error && (
-          <>
-            <div className="card">
-              <div className="head">
-                <h2>Médecins</h2>
-                <button className="btn primary sm" onClick={() => { setOpen("doctor"); setFormError(""); }}>
-                  Ajouter un médecin
-                </button>
-              </div>
-              {doctors.length === 0 ? (
-                <div className="empty">Aucun médecin rattaché au cabinet.</div>
-              ) : (
-                doctors.map((d) => (
-                  <div className={`item ${d.is_active ? "" : "off"}`} key={d.id}>
-                    <div>
-                      <div className="name">Dr. {d.first_name} {d.last_name}</div>
-                      <div className="meta">{d.email}{d.specialty ? ` · ${d.specialty}` : ""}</div>
-                    </div>
-                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                      {!d.is_active && <span className="pill">Désactivé</span>}
-                      <button className="btn ghost sm" onClick={() => openManage(d)}>Gérer</button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="card">
-              <div className="head">
-                <h2>Secrétariat</h2>
-                <button className="btn primary sm" onClick={() => { setOpen("secretary"); setFormError(""); }}>
-                  Ajouter une secrétaire
-                </button>
-              </div>
-              {secretaries.length === 0 ? (
-                <div className="empty">Aucun compte de secrétariat.</div>
-              ) : (
-                secretaries.map((s) => (
-                  <div className={`item ${s.is_active ? "" : "off"}`} key={s.id}>
-                    <div>
-                      <div className="name">{s.first_name} {s.last_name}</div>
-                      <div className="meta">{s.email}</div>
-                    </div>
-                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                      {!s.is_active && <span className="pill">Désactivé</span>}
-                      <button className="btn ghost sm" onClick={() => openManage(s)}>Gérer</button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </>
-        )}
+      <div className="card">
+        <div className="head">
+          <h2><UserRound size={20} color="#1877e0" /> Secrétariat</h2>
+          <button className="btn primary sm" onClick={() => { setOpen("secretary"); setFormError(""); }}>
+            <Plus size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />Ajouter une secrétaire
+          </button>
+        </div>
+        {staffTable(secretaries, "secretary")}
       </div>
 
       {open && (
@@ -350,6 +382,6 @@ export default function AdminPage() {
           </div>
         </div>
       )}
-    </div>
+    </PatientShell>
   );
 }

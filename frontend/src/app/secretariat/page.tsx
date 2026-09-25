@@ -1,13 +1,12 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import DocumentViewer from "@/components/DocumentViewer";
-import { Home, CalendarDays, Users, Stethoscope, Archive, Receipt, Bell, LogOut } from "lucide-react";
+import { Home, CalendarDays, Users, Stethoscope, Archive, Receipt, Bell, LogOut, Plus, ChevronRight, Clock, Wallet, FileText, Trash2, Check, Eye, CalendarClock } from "lucide-react";
 import PatientFile from "@/components/secretariat/PatientFile";
 import SecretariatTopbar from "@/components/secretariat/SecretariatTopbar";
-
 
 type TabType = "dashboard" | "rdv" | "patients" | "new_patient" | "doctors" | "archives" | "settings" | "alerts" | "billing";
 
@@ -22,6 +21,8 @@ interface Patient {
   address: string | null;
   status: string;
   status_reason: string | null;
+  phone?: string | null;
+  email?: string | null;
 }
 
 interface DoctorSummary {
@@ -48,20 +49,6 @@ const STATUS_LABELS: Record<string, string> = {
   no_show: "Absence",
 };
 
-const DOC_CATEGORIES: Record<string, string> = {
-  prescription: "Ordonnance",
-  lab_result: "Analyse",
-  xray: "Radiographie",
-  mri: "IRM",
-  ct_scan: "Scanner",
-  ultrasound: "Échographie",
-  operative_report: "Compte rendu opératoire",
-  consultation_note: "Note de consultation",
-  other: "Autre",
-};
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001/api/v1";
-
 const NAV: { id: TabType; label: string }[] = [
   { id: "dashboard", label: "Journée" },
   { id: "rdv", label: "Rendez-vous" },
@@ -83,9 +70,9 @@ const NAV_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
 };
 
 function parseLocal(iso: string) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(iso);
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(iso ?? "");
   if (!m) return new Date(iso);
-  return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+  return new Date(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0));
 }
 
 function fmtTime(iso: string) {
@@ -103,6 +90,32 @@ function isToday(iso: string) {
 function toISODate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+
+function ageFrom(dob: string) {
+  if (!dob) return null;
+  const d = parseLocal(dob);
+  const now = new Date();
+  let a = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) a--;
+  return a;
+}
+
+function bloodLabel(b: string | null | undefined) {
+  return !b || b === "unknown" ? "Non renseigné" : b;
+}
+
+function initials(p: Patient) {
+  return `${(p.first_name || "?").charAt(0)}${(p.last_name || "").charAt(0)}`.toUpperCase();
+}
+
+function invoiceNumber(i: any) {
+  const year = i.issued_at ? parseLocal(i.issued_at).getFullYear() : new Date().getFullYear();
+  return `#${year}-${String(i.id ?? "").replace(/-/g, "").slice(0, 4).toUpperCase()}`;
+}
+
+type RdvFilter = "upcoming" | "today" | "past" | "cancelled" | "all";
+type BillFilter = "all" | "unpaid" | "partial" | "paid";
 
 function dayChipLabel(d: Date, offset: number) {
   if (offset === 0) return { top: "Auj.", bottom: String(d.getDate()) };
@@ -159,8 +172,6 @@ export default function SecretariatDashboard() {
   const [statusTarget, setStatusTarget] = useState<{ patient: Patient; action: "archived" | "removed" } | null>(null);
   const [statusReason, setStatusReason] = useState("");
   const [statusSaving, setStatusSaving] = useState(false);
-
-    const [menuOpen, setMenuOpen] = useState(false);
   const [pwdForm, setPwdForm] = useState({ current: "", next: "" });
   const [emailForm, setEmailForm] = useState({ current: "", next: "" });
   const [settingsMsg, setSettingsMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -169,54 +180,18 @@ export default function SecretariatDashboard() {
   const [payForm, setPayForm] = useState({ amount: "", method: "cash", reference: "" });
   const [paySaving, setPaySaving] = useState(false);
   const [payError, setPayError] = useState("");
-    const [procedures, setProcedures] = useState<any[]>([]);
+  const [procedures, setProcedures] = useState<any[]>([]);
   const [billOpen, setBillOpen] = useState(false);
   const [billForm, setBillForm] = useState({ patientId: "", doctorId: "", procedureId: "", description: "", amount: "" });
   const [billError, setBillError] = useState("");
   const [billSaving, setBillSaving] = useState(false);
   const [docs, setDocs] = useState<any[]>([]);
-  const [docForm, setDocForm] = useState({ category: "lab_result", title: "", date: "" });
-  const [docFile, setDocFile] = useState<File | null>(null);
-  const [docError, setDocError] = useState("");
-  const [docSaving, setDocSaving] = useState(false);
   const [viewDoc, setViewDoc] = useState<any>(null);
+  const [rdvFilter, setRdvFilter] = useState<RdvFilter>("upcoming");
+  const [billFilter, setBillFilter] = useState<BillFilter>("all");
 
   async function loadDocs(patientId: string) {
     setDocs((await api<any[]>(`/documents/patient/${patientId}`).catch(() => [])) ?? []);
-  }
-
-  async function uploadDoc(patientId: string) {
-    setDocError("");
-    if (!docFile || !docForm.title.trim() || !docForm.date) {
-      setDocError("Fichier, titre et date sont requis.");
-      return;
-    }
-    setDocSaving(true);
-    try {
-      const body = new FormData();
-      body.append("patient_id", patientId);
-      body.append("category", docForm.category);
-      body.append("title", docForm.title.trim());
-      body.append("document_date", docForm.date);
-      body.append("file", docFile);
-
-      const res = await fetch(`${API_URL}/documents/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("medical_token") ?? ""}` },
-        body,
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail ?? "Envoi impossible.");
-      }
-      setDocForm({ category: "lab_result", title: "", date: "" });
-      setDocFile(null);
-      await loadDocs(patientId);
-    } catch (err) {
-      setDocError(err instanceof Error ? err.message : "Envoi impossible.");
-    } finally {
-      setDocSaving(false);
-    }
   }
 
   async function openDoc(docId: string) {
@@ -226,6 +201,12 @@ export default function SecretariatDashboard() {
     } catch (err) {
       alert(err instanceof Error ? err.message : "Ouverture impossible.");
     }
+  }
+
+  function openFile(patientId: string) {
+    window.history.pushState({ patient: patientId }, "");
+    setActiveTab("patients");
+    setOpenPatientId(patientId);
   }
 
   async function submitInvoice(e: React.FormEvent) {
@@ -319,7 +300,6 @@ export default function SecretariatDashboard() {
     }
   }
 
-
   const patientName = (id: string) => {
     const p = patients.find((x) => x.id === id);
     return p ? `${p.first_name} ${p.last_name}` : "Patient inconnu";
@@ -343,7 +323,6 @@ export default function SecretariatDashboard() {
       setDoctors(d);
       setAppointments(a);
       setInvoices(inv ?? []);
-
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Impossible de charger les données.");
     }
@@ -360,10 +339,9 @@ export default function SecretariatDashboard() {
   useEffect(() => {
     if (openPatientId) {
       setDocs([]);
-      setDocError("");
       loadDocs(openPatientId);
     }
-  }, [openPatientId]);  
+  }, [openPatientId]);
 
   useEffect(() => {
     const onPop = () => setOpenPatientId(null);
@@ -394,13 +372,13 @@ export default function SecretariatDashboard() {
     return () => { cancelled = true; };
   }, [isRdvModalOpen, rdvDoctorId, rdvFormData.date]);
 
-    async function changeStatus(patientId: string, status: string, reason?: string) {
+  async function changeStatus(patientId: string, status: string, reason?: string) {
     const params = new URLSearchParams({ status });
     if (reason) params.set("reason", reason);
     await api(`/patients/${patientId}/status?${params.toString()}`, { method: "PATCH" });
     await loadAll();
   }
-    
+
   useEffect(() => {
     if (!billOpen || !billForm.doctorId) {
       setProcedures([]);
@@ -526,6 +504,15 @@ export default function SecretariatDashboard() {
     await loadAll();
   }
 
+  async function confirmAppointment(id: string) {
+    try {
+      await api(`/appointments/${id}`, { method: "PUT", body: JSON.stringify({ status: "confirmed" }) });
+      await loadAll();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Confirmation impossible.");
+    }
+  }
+
   async function handlePatientSubmit(e: React.FormEvent) {
     e.preventDefault();
     setPatientFormError("");
@@ -558,24 +545,23 @@ export default function SecretariatDashboard() {
     }
   }
 
-  function handleSearchSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    
+  function runSearch(q: string, pool: Patient[]) {
+    const s = q.toLowerCase().trim();
+    setSearchQuery(q);
     setHasSearched(true);
-    const q = searchQuery.toLowerCase().trim();
-    if (!q) {
-      setSearchResults([]);
-      return;
-    }
     setSearchResults(
-      (activeTab === "archives" ? inactivePatients : activePatients).filter(
-        (p) =>
-          (p.national_id || "").toLowerCase().includes(q) ||
-          p.last_name.toLowerCase().includes(q) ||
-          p.first_name.toLowerCase().includes(q) ||
-          `${p.first_name} ${p.last_name}`.toLowerCase().includes(q)
+      pool.filter((p) =>
+        (p.national_id || "").toLowerCase().includes(s) ||
+        `${p.first_name} ${p.last_name}`.toLowerCase().includes(s) ||
+        `${p.last_name} ${p.first_name}`.toLowerCase().includes(s)
       )
     );
+  }
+
+  function clearSearch() {
+    setSearchQuery("");
+    setSearchResults([]);
+    setHasSearched(false);
   }
 
   const displayedAppointments = appointments
@@ -588,13 +574,19 @@ export default function SecretariatDashboard() {
 
   const todayCount = appointments.filter((a) => isToday(a.scheduled_at)).length;
   const scheduledCount = appointments.filter((a) => a.status === "scheduled").length;
-  const listedPatients = hasSearched && searchQuery.trim() ? searchResults : activePatients;
-  const listedArchives = hasSearched && searchQuery.trim() ? searchResults : inactivePatients;
+  const searching = hasSearched && searchQuery.trim() !== "";
+  const listedPatients = searching ? searchResults : activePatients;
+  const listedArchives = searching ? searchResults : inactivePatients;
   const invoicedTotal = invoices.reduce((s, i) => s + (i.amount_due ?? 0), 0);
   const collectedTotal = invoices.reduce((s, i) => s + (i.paid_amount ?? 0), 0);
   const unpaidCount = invoices.filter((i) => i.status !== "paid").length;
   const money = (v: number) =>
     new Intl.NumberFormat("fr-FR", { style: "currency", currency: "MAD", maximumFractionDigits: 0 }).format(v);
+
+  const nextApptOf = (patientId: string) =>
+    appointments
+      .filter((a) => a.patient_id === patientId && a.status !== "cancelled" && parseLocal(a.scheduled_at).getTime() >= Date.now())
+      .sort((a, b) => parseLocal(a.scheduled_at).getTime() - parseLocal(b.scheduled_at).getTime())[0];
 
   function slotCells(doctorId: string, dateISO: string, apiSlots: string[], excludeId?: string) {
     const now = new Date();
@@ -623,6 +615,89 @@ export default function SecretariatDashboard() {
   const reFree = reCells.filter((c) => !c.taken && !c.past).length;
   const alertCount = appointments.filter((a) => a.status === "scheduled" && parseLocal(a.scheduled_at).getTime() >= Date.now()).length;
   const openPatient = openPatientId ? patients.find((p) => p.id === openPatientId) ?? null : null;
+
+  const ts = (iso: string) => parseLocal(iso).getTime();
+  const nowMs = Date.now();
+  const todayAppts = appointments
+    .filter((a) => isToday(a.scheduled_at) && a.status !== "cancelled")
+    .sort((a, b) => ts(a.scheduled_at) - ts(b.scheduled_at));
+  const upcomingAppts = appointments
+    .filter((a) => ts(a.scheduled_at) >= nowMs && a.status !== "cancelled")
+    .sort((a, b) => ts(a.scheduled_at) - ts(b.scheduled_at));
+  const pastAppts = appointments
+    .filter((a) => ts(a.scheduled_at) < nowMs && a.status !== "cancelled")
+    .sort((a, b) => ts(b.scheduled_at) - ts(a.scheduled_at));
+  const cancelledAppts = appointments
+    .filter((a) => a.status === "cancelled")
+    .sort((a, b) => ts(b.scheduled_at) - ts(a.scheduled_at));
+  const allAppts = [...appointments].sort((a, b) => ts(b.scheduled_at) - ts(a.scheduled_at));
+  const RDV_FILTERS: { id: RdvFilter; label: string; list: Appointment[] }[] = [
+    { id: "upcoming", label: "À venir", list: upcomingAppts },
+    { id: "today", label: "Aujourd'hui", list: todayAppts },
+    { id: "past", label: "Passés", list: pastAppts },
+    { id: "cancelled", label: "Annulés", list: cancelledAppts },
+    { id: "all", label: "Tous", list: allAppts },
+  ];
+  const rdvList = RDV_FILTERS.find((f) => f.id === rdvFilter)?.list ?? allAppts;
+
+  const sortedInvoices = [...invoices].sort((a, b) => ts(b.issued_at) - ts(a.issued_at));
+  const unpaidInvoices = sortedInvoices.filter((i) => i.status !== "paid" && i.status !== "cancelled");
+  const BILL_FILTERS: { id: BillFilter; label: string; list: any[] }[] = [
+    { id: "all", label: "Toutes", list: sortedInvoices },
+    { id: "unpaid", label: "Impayées", list: sortedInvoices.filter((i) => i.status === "unpaid") },
+    { id: "partial", label: "Partielles", list: sortedInvoices.filter((i) => i.status === "partial") },
+    { id: "paid", label: "Payées", list: sortedInvoices.filter((i) => i.status === "paid") },
+  ];
+  const billList = BILL_FILTERS.find((f) => f.id === billFilter)?.list ?? sortedInvoices;
+  const outstanding = Math.max(0, invoicedTotal - collectedTotal);
+
+  const patientInitials = (id: string) => {
+    const p = patients.find((x) => x.id === id);
+    return p ? initials(p) : "?";
+  };
+
+  const statusPill = (status: string) => (
+    <span className={`pill p-${status}`}>{STATUS_LABELS[status] || status}</span>
+  );
+
+  const invoicePill = (status: string) => (
+    <span className={`pill p-${status === "paid" ? "paid" : status === "partial" ? "partial" : "unpaid"}`}>
+      {status === "paid" ? "Payée" : status === "partial" ? "Partielle" : "Impayée"}
+    </span>
+  );
+
+  const openPay = (inv: any) => {
+    setPayTarget(inv);
+    setPayForm({ amount: String(inv.balance_due), method: "cash", reference: "" });
+    setPayError("");
+  };
+
+  const openBill = () => {
+    setBillForm({ patientId: "", doctorId: doctors.length > 0 ? doctors[0].id : "", procedureId: "", description: "", amount: "" });
+    setBillError("");
+    setBillOpen(true);
+  };
+
+  const pageTitle =
+    activeTab === "patients" || activeTab === "new_patient" ? "Patients"
+    : activeTab === "rdv" ? "Rendez-vous"
+    : activeTab === "doctors" ? "Médecins du cabinet"
+    : activeTab === "archives" ? "Dossiers archivés"
+    : activeTab === "settings" ? "Paramètres"
+    : activeTab === "billing" ? "Facturation"
+    : activeTab === "alerts" ? "Alertes"
+    : "Bonjour, voici votre journée";
+
+  const pageSub =
+    activeTab === "patients" || activeTab === "new_patient" ? `${activePatients.length} patients actifs`
+    : activeTab === "rdv" ? `${appointments.length} rendez-vous au total`
+    : activeTab === "doctors" ? `${doctors.length} médecins rattachés`
+    : activeTab === "archives" ? `${inactivePatients.length} dossiers archivés ou retirés`
+    : activeTab === "settings" ? "Votre compte et vos identifiants"
+    : activeTab === "billing" ? `${money(collectedTotal)} encaissés, ${unpaidCount} facture(s) impayée(s)`
+    : activeTab === "alerts" ? "Demandes et rappels en attente"
+    : `${todayCount} rendez-vous aujourd'hui, ${activePatients.length} patients actifs`;
+
   return (
     <div className="shell">
       <style jsx>{`
@@ -633,9 +708,9 @@ export default function SecretariatDashboard() {
           --navy: #0a2540;
           --muted: #5a7590;
           --line: #e1eaf3;
-          --paper: #f5f9fd;
+          --paper: #f4f8fc;
           --green: #1a7f4b;
-          --green-bg: #e6f4ec;
+          --green-bg: #e3f5ea;
           --amber: #a86a12;
           --amber-bg: #fbf0de;
           --red: #cf3a3a;
@@ -652,8 +727,11 @@ export default function SecretariatDashboard() {
           position: sticky; top: 0; height: 100vh;
           display: flex; flex-direction: column;
           padding: 24px 16px;
-          background: linear-gradient(180deg, #0d3a6e 0%, #0a2540 100%);
+          background:
+            radial-gradient(120% 60% at 0% 78%, rgba(90, 166, 245, 0.18) 0%, rgba(90, 166, 245, 0) 60%),
+            linear-gradient(180deg, #0d3a6e 0%, #0a2540 100%);
           color: #fff;
+          box-sizing: border-box;
         }
         .side-brand { display: flex; align-items: center; gap: 12px; padding: 0 8px 28px; }
         .side-logo {
@@ -662,34 +740,46 @@ export default function SecretariatDashboard() {
           background: var(--blue); font-size: 26px; font-weight: 800;
           box-shadow: 0 6px 16px rgba(24, 119, 224, 0.45);
         }
-        .side-name { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; }
+        .side-name { font-size: 24px; font-weight: 800; letter-spacing: -0.03em; }
         .side-name span { color: #5aa6f5; }
-        .side-tag { font-size: 11px; color: #9db4cc; margin-top: 1px; }
+        .side-tag { font-size: 12px; color: #7fb6f0; margin-top: 1px; }
 
-        .side-nav { display: flex; flex-direction: column; gap: 4px; flex-grow: 1; }
+        .side-nav { display: flex; flex-direction: column; gap: 6px; flex-grow: 1; }
         .side-link {
-          display: flex; align-items: center; gap: 13px;
+          display: flex; align-items: center; gap: 14px;
           width: 100%; padding: 12px 14px; border: none; border-radius: 10px;
-          background: none; color: #c3d4e6; font: inherit; font-size: 15px; font-weight: 500;
+          background: none; color: #dce8f5; font: inherit; font-size: 15px; font-weight: 500;
           text-align: left; cursor: pointer;
-          transition: background-color 0.16s ease, color 0.16s ease, transform 0.18s ease;
+          transition: background-color 0.16s ease, color 0.16s ease;
         }
-        .side-link:hover { background: rgba(255, 255, 255, 0.07); color: #fff; transform: translateX(3px); }
+        .side-link:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
         .side-link.on { background: var(--blue); color: #fff; font-weight: 600; box-shadow: 0 6px 16px rgba(24, 119, 224, 0.35); }
         .side-count {
           margin-left: auto; font-style: normal; font-size: 12px; font-weight: 700;
           background: rgba(255, 255, 255, 0.16); padding: 2px 8px; border-radius: 20px;
         }
+        .side-alert { background: #e5484d; color: #fff; min-width: 22px; text-align: center; box-sizing: border-box; }
+
+        .side-promo {
+          margin: 16px 0; padding: 16px; border-radius: 14px;
+          background: rgba(24, 119, 224, 0.22); border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .side-promo-head { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 800; }
+        .side-promo-logo {
+          width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+          background: var(--blue); font-size: 18px;
+        }
+        .side-promo p { margin: 10px 0 0; font-size: 14px; line-height: 1.5; color: #e4eefa; }
 
         .side-foot { border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 16px; display: flex; flex-direction: column; gap: 6px; }
         .side-me {
           display: flex; align-items: center; gap: 12px; width: 100%;
-          padding: 10px; border: none; border-radius: 10px; background: rgba(255, 255, 255, 0.06);
+          padding: 10px; border: none; border-radius: 10px; background: none;
           color: #fff; font: inherit; cursor: pointer; transition: background-color 0.16s ease;
         }
-        .side-me:hover { background: rgba(255, 255, 255, 0.12); }
+        .side-me:hover { background: rgba(255, 255, 255, 0.08); }
         .side-avatar {
-          width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+          width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
           display: flex; align-items: center; justify-content: center;
           background: #fff; color: var(--blue); font-weight: 800;
         }
@@ -698,52 +788,37 @@ export default function SecretariatDashboard() {
         .side-out {
           display: flex; align-items: center; gap: 12px; width: 100%;
           padding: 11px 14px; border: none; border-radius: 10px; background: none;
-          color: #9db4cc; font: inherit; font-size: 14px; cursor: pointer;
+          color: #dce8f5; font: inherit; font-size: 14px; cursor: pointer;
           transition: color 0.16s ease, background-color 0.16s ease;
         }
         .side-out:hover { color: #ff9b9b; background: rgba(255, 100, 100, 0.1); }
-        .side-alert { background: #e5484d; color: #fff; }
-        .side-promo {
-          margin: 16px 0; padding: 16px; border-radius: 14px;
-          background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .side-promo-head { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 800; }
-        .side-promo-logo {
-          width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
-          background: var(--blue); font-size: 18px;
-        }
-        .side-promo p { margin: 10px 0 0; font-size: 13px; line-height: 1.5; color: #c3d4e6; }
-        .band { padding-top: 24px; }
+
         .ok { background: var(--green-bg); color: var(--green); padding: 13px 18px; border-radius: 10px; margin-bottom: 22px; font-size: 14px; font-weight: 600; }
 
-        .band {
-          background: linear-gradient(180deg, #e9f2fb 0%, var(--paper) 100%);
-          padding: 32px 32px 0;
-        }
-        .wrap { max-width: 1180px; margin: 0 auto; width: 100%; }
-        .main { padding: 28px 32px 56px; }
-
-        .hero-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
-        .kicker { font-size: 12px; font-weight: 700; letter-spacing: 0.09em; color: var(--blue); margin: 0 0 8px; }
-        .hero-title { font-size: 32px; font-weight: 800; letter-spacing: -0.025em; margin: 0 0 6px; line-height: 1.15; }
-        .hero-sub { font-size: 15px; color: var(--muted); margin: 0; }
+        .band { padding: 26px 32px 0; }
+        .wrap { max-width: 1320px; margin: 0 auto; width: 100%; }
+        .main { padding: 22px 32px 56px; }
+        .hero-title { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 4px; line-height: 1.2; }
+        .hero-sub { font-size: 14px; color: var(--muted); margin: 0; }
 
         .btn {
+          display: inline-flex; align-items: center; justify-content: center; gap: 8px;
           font: inherit; font-size: 14px; font-weight: 600;
-          border-radius: 9px; cursor: pointer; padding: 11px 20px;
-          border: 1px solid transparent;
-          transition: transform 0.16s cubic-bezier(0.34, 1.4, 0.64, 1), box-shadow 0.2s ease, background-color 0.18s ease, color 0.18s ease;
+          border-radius: 9px; cursor: pointer; padding: 10px 18px;
+          border: 1px solid transparent; white-space: nowrap;
+          transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
         }
-        .btn:active { transform: translateY(1px) scale(0.985); }
         .btn:focus-visible { outline: 3px solid rgba(24, 119, 224, 0.35); outline-offset: 2px; }
-        .btn-primary { background: var(--blue); color: #fff; box-shadow: 0 2px 6px rgba(24, 119, 224, 0.28); }
-        .btn-primary:hover { background: var(--blue-dark); transform: translateY(-2px); box-shadow: 0 8px 18px rgba(24, 119, 224, 0.34); }
-        .btn-primary:disabled { opacity: 0.55; transform: none; box-shadow: none; cursor: default; }
+        .btn-primary { background: var(--blue); color: #fff; box-shadow: 0 4px 12px rgba(24, 119, 224, 0.25); }
+        .btn-primary:hover { background: var(--blue-dark); }
+        .btn-primary:disabled { opacity: 0.55; box-shadow: none; cursor: default; }
         .btn-ghost { background: #fff; color: var(--navy); border-color: var(--line); }
-        .btn-ghost:hover { border-color: var(--blue); color: var(--blue); transform: translateY(-2px); box-shadow: 0 6px 14px rgba(10, 37, 64, 0.09); }
+        .btn-ghost:hover { border-color: var(--blue); color: var(--blue); }
         .btn-danger { background: #fff; color: var(--red); border-color: var(--line); }
-        .btn-danger:hover { background: var(--red-bg); border-color: var(--red); transform: translateY(-2px); }
+        .btn-danger:hover { background: var(--red-bg); border-color: var(--red); }
         .btn-sm { padding: 7px 14px; font-size: 13px; }
+        .btn-link { background: none; border: none; padding: 0; color: var(--blue); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+        .btn-link:hover { text-decoration: underline; }
 
         .field {
           width: 100%; box-sizing: border-box; padding: 11px 14px; font: inherit; font-size: 14px;
@@ -752,7 +827,7 @@ export default function SecretariatDashboard() {
         }
         .field:hover { border-color: #c9d9ea; }
         .field:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 4px rgba(24, 119, 224, 0.14); }
-        .lab { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+        .lab { display: block; font-size: 13px; font-weight: 500; color: var(--muted); margin-bottom: 6px; }
         select.field {
           appearance: none; -webkit-appearance: none; padding-right: 40px; cursor: pointer;
           background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235a7590' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
@@ -760,63 +835,155 @@ export default function SecretariatDashboard() {
         }
 
         .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 24px; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 28px; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 22px; }
         .stat {
           background: #fff; border: 1px solid var(--line); border-radius: 14px;
-          padding: 20px; text-align: left; font: inherit; cursor: pointer;
-          animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
-          transition: transform 0.18s ease, box-shadow 0.2s ease, border-color 0.18s ease;
+          padding: 18px 20px; text-align: left; font: inherit; cursor: pointer;
+          transition: box-shadow 0.2s ease, border-color 0.18s ease;
         }
-        .stat:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(10, 37, 64, 0.09); border-color: #cddef1; }
-        .stat.on { border-color: var(--blue); box-shadow: 0 6px 18px rgba(24, 119, 224, 0.16); }
-        .stat-k { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
-        .stat-v { font-size: 34px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-        @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+        .stat:hover { box-shadow: 0 10px 24px rgba(10, 37, 64, 0.08); border-color: #cddef1; }
+        .stat.on { border-color: var(--blue); box-shadow: 0 6px 18px rgba(24, 119, 224, 0.14); }
+        .stat-k { font-size: 13px; font-weight: 500; color: var(--muted); margin-bottom: 8px; }
+        .stat-v { font-size: 30px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
 
         .panel { background: #fff; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
-        .panel-head { padding: 18px 24px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-        .panel-title { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; margin: 0; }
+        .panel-head { padding: 16px 22px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+        .panel-title { font-size: 16px; font-weight: 700; margin: 0; }
 
         .row {
-          width: 100%; display: flex; align-items: center; gap: 18px; padding: 15px 24px;
+          width: 100%; display: flex; align-items: center; gap: 18px; padding: 14px 22px;
           border: none; border-top: 1px solid var(--line); background: #fff; font: inherit; font-size: 14px;
-          text-align: left; cursor: pointer; transition: background-color 0.16s ease, padding-left 0.2s ease;
+          text-align: left; cursor: pointer; transition: background-color 0.16s ease;
         }
         .row:first-of-type { border-top: none; }
-        .row:hover { background: var(--blue-soft); padding-left: 30px; }
-        .row-when { width: 120px; flex-shrink: 0; color: var(--muted); font-variant-numeric: tabular-nums; }
-        .row-who { flex-grow: 1; font-weight: 700; min-width: 0; }
+        .row:hover { background: #f7fafd; }
+        .row-when { width: 130px; flex-shrink: 0; color: var(--muted); font-variant-numeric: tabular-nums; }
+        .row-who { flex-grow: 1; font-weight: 600; min-width: 0; }
         .row-doc { width: 200px; color: var(--muted); flex-shrink: 0; }
 
-        .line-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 24px; border-top: 1px solid var(--line); }
+        .line-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 22px; border-top: 1px solid var(--line); }
         .line-item:hover { background: #fafcfe; }
-        .name { font-weight: 700; font-size: 15px; }
+        .name { font-weight: 600; font-size: 15px; }
         .meta { font-size: 13px; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
 
-        .pill { padding: 4px 11px; border-radius: 7px; font-size: 12px; font-weight: 700; white-space: nowrap; }
-        .p-scheduled { background: var(--amber-bg); color: var(--amber); }
+        .pill { display: inline-block; padding: 3px 11px; border-radius: 20px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+        .p-scheduled { background: var(--blue-soft); color: var(--blue-dark); }
         .p-confirmed { background: var(--green-bg); color: var(--green); }
-        .p-completed { background: var(--blue-soft); color: var(--blue-dark); }
-        .p-cancelled { background: var(--red-bg); color: var(--red); }
-        .p-no_show { background: #eef2f6; color: var(--muted); }
+        .p-completed { background: var(--green-bg); color: var(--green); }
+        .p-cancelled { background: #eef2f6; color: var(--muted); }
+        .p-no_show { background: var(--red-bg); color: var(--red); }
+        .p-unpaid { background: var(--red-bg); color: var(--red); }
+        .p-partial { background: var(--amber-bg); color: var(--amber); }
+        .p-paid { background: var(--green-bg); color: var(--green); }
+
+        .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
+        .kpi {
+          display: flex; align-items: center; gap: 16px; padding: 18px 20px; text-align: left;
+          background: #fff; border: 1px solid var(--line); border-radius: 14px; font: inherit; color: inherit; cursor: pointer;
+          transition: border-color 0.16s ease, box-shadow 0.16s ease;
+        }
+        .kpi:hover { border-color: #cddef1; box-shadow: 0 8px 20px rgba(10, 37, 64, 0.07); }
+        .kpi.static { cursor: default; }
+        .kpi.static:hover { box-shadow: none; border-color: var(--line); }
+        .kpi > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+        .kpi-k { font-size: 13px; color: var(--muted); }
+        .kpi-v { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin-top: 2px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .kpi-ic { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .kpi-ic.sm { width: 38px; height: 38px; border-radius: 10px; }
+        .kpi-ic.blue { background: var(--blue-soft); color: var(--blue); }
+        .kpi-ic.green { background: var(--green-bg); color: var(--green); }
+        .kpi-ic.amber { background: var(--amber-bg); color: var(--amber); }
+        .kpi-ic.red { background: var(--red-bg); color: var(--red); }
+
+        .cols { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 18px; align-items: start; }
+        .stack { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+        .with-ic { display: flex; align-items: center; gap: 10px; }
+        .with-ic :global(svg) { color: var(--blue); }
+
+        .agenda-row { display: flex; align-items: center; gap: 14px; padding: 12px 22px; border-top: 1px solid var(--line); cursor: pointer; }
+        .agenda-row:first-of-type { border-top: none; }
+        .agenda-row:hover { background: #f7fafd; }
+        .agenda-time { width: 52px; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .agenda-bar { width: 4px; align-self: stretch; border-radius: 4px; background: var(--blue); }
+        .agenda-bar.b-confirmed, .agenda-bar.b-completed { background: var(--green); }
+        .agenda-bar.b-no_show { background: var(--red); }
+
+        .mini-row { display: flex; align-items: center; gap: 12px; padding: 12px 22px; border-top: 1px solid var(--line); cursor: pointer; }
+        .mini-row:first-of-type { border-top: none; }
+        .mini-row:hover { background: #f7fafd; }
+        .date-box { width: 46px; flex-shrink: 0; text-align: center; padding: 6px 0; border-radius: 10px; background: var(--blue-soft); color: var(--blue-dark); }
+        .date-box b { display: block; font-size: 18px; line-height: 1.1; }
+        .date-box span { font-size: 11px; }
+
+        .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+        .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+        .chip {
+          display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 20px;
+          border: 1px solid var(--line); background: #fff; font: inherit; font-size: 13px; font-weight: 500; color: var(--navy); cursor: pointer;
+        }
+        .chip em { font-style: normal; font-size: 12px; font-weight: 700; padding: 1px 7px; border-radius: 20px; background: #eef2f6; color: var(--muted); }
+        .chip:hover { border-color: var(--blue); }
+        .chip.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+        .chip.on em { background: rgba(255, 255, 255, 0.22); color: #fff; }
+
+        .icon-btn {
+          width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+          border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--muted); cursor: pointer;
+        }
+        .icon-btn:hover { color: var(--blue); border-color: var(--blue); background: var(--blue-soft); }
+        .icon-btn.icon-ok { color: var(--green); }
+        .icon-btn.icon-ok:hover { border-color: var(--green); background: var(--green-bg); color: var(--green); }
+        .icon-btn.danger:hover { color: var(--red); border-color: var(--red); background: var(--red-bg); }
+        .ok-btn { color: var(--green); }
+        .ok-btn:hover { border-color: var(--green); color: var(--green); background: var(--green-bg); }
+
+        @media (max-width: 1200px) {
+          .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .cols { grid-template-columns: 1fr; }
+        }
+
+        .tbl-wrap { overflow-x: auto; }
+        .tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .tbl th {
+          text-align: left; padding: 12px 16px; font-size: 13px; font-weight: 500; color: var(--muted);
+          background: #f7fafd; border-bottom: 1px solid var(--line); white-space: nowrap;
+        }
+        .tbl td { padding: 12px 16px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
+        .tbl tr:last-child td { border-bottom: none; }
+        .tbl-row { cursor: pointer; transition: background-color 0.14s ease; }
+        .tbl-row:hover td { background: #f7fafd; }
+        .tbl-actions { text-align: right; }
+        .tbl-actions-inner { display: inline-flex; gap: 8px; align-items: center; }
+        .who { display: flex; align-items: center; gap: 12px; }
+        .avatar {
+          width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          background: var(--blue-soft); color: var(--blue); font-weight: 700; font-size: 14px;
+        }
+        .muted { color: var(--muted); }
+
+        .search-note {
+          display: flex; align-items: center; justify-content: space-between; gap: 12px;
+          margin-bottom: 16px; padding: 12px 16px; border-radius: 10px;
+          background: var(--blue-soft); color: var(--blue-dark); font-size: 14px; border: 1px solid #d5e6f8;
+        }
 
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
-        .aptcard { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 20px; transition: transform 0.18s ease, box-shadow 0.2s ease; }
-        .aptcard:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(10, 37, 64, 0.09); }
+        .aptcard { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 20px; transition: box-shadow 0.2s ease; }
+        .aptcard:hover { box-shadow: 0 10px 24px rgba(10, 37, 64, 0.08); }
         .aptcard-when { font-size: 15px; font-weight: 700; color: var(--blue); margin-top: 10px; font-variant-numeric: tabular-nums; }
 
-        .folder { border-top: 1px solid var(--line); padding: 20px 24px; background: linear-gradient(180deg, var(--blue-soft), #fff); }
         .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 18px; margin-bottom: 18px; }
-        .fact-k { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+        .fact-k { font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 4px; }
         .fact-v { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
         .days { display: flex; gap: 8px; flex-wrap: wrap; }
         .day {
           font: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px;
           min-width: 52px; padding: 9px 6px; background: #fff; color: var(--navy);
-          border: 1px solid var(--line); border-radius: 11px; transition: transform 0.16s ease, background-color 0.16s ease;
+          border: 1px solid var(--line); border-radius: 11px; transition: background-color 0.16s ease, border-color 0.16s ease;
         }
-        .day:hover { border-color: var(--blue); color: var(--blue); transform: translateY(-3px); }
+        .day:hover { border-color: var(--blue); color: var(--blue); }
         .day.on { background: var(--blue); border-color: var(--blue); color: #fff; }
         .day-top { font-size: 11px; font-weight: 700; opacity: 0.72; }
         .day-num { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -854,7 +1021,7 @@ export default function SecretariatDashboard() {
 
         .alert { background: var(--red-bg); color: var(--red); padding: 13px 18px; border-radius: 10px; margin-bottom: 22px; font-size: 14px; font-weight: 600; }
         .empty { padding: 40px 24px; text-align: center; color: var(--muted); font-size: 14px; }
-        .err { color: var(--red); font-size: 14px; font-weight: 600; margin: 0 0 16px; }      
+        .err { color: var(--red); font-size: 14px; font-weight: 600; margin: 0 0 16px; }
       `}</style>
 
       <aside className="side">
@@ -871,9 +1038,12 @@ export default function SecretariatDashboard() {
             const Icon = NAV_ICONS[t.id];
             const on = activeTab === t.id || (t.id === "patients" && activeTab === "new_patient");
             return (
-              
-              <button key={t.id} className={`side-link ${on ? "on" : ""}`} onClick={() => { setActiveTab(t.id); setDashFilter("all"); setOpenPatientId(null); }}>
-                <Icon size={19} />
+              <button
+                key={t.id}
+                className={`side-link ${on ? "on" : ""}`}
+                onClick={() => { setActiveTab(t.id); setDashFilter("all"); setOpenPatientId(null); clearSearch(); }}
+              >
+                <Icon size={20} />
                 <span>{t.label}</span>
                 {t.id === "archives" && inactivePatients.length > 0 && <em className="side-count">{inactivePatients.length}</em>}
                 {t.id === "alerts" && alertCount > 0 && <em className="side-count side-alert">{alertCount}</em>}
@@ -888,12 +1058,13 @@ export default function SecretariatDashboard() {
         </div>
 
         <div className="side-foot">
-          <button className="side-me" onClick={() => { setActiveTab("settings"); setSettingsMsg(null); }}>
+          <button className="side-me" onClick={() => { setActiveTab("settings"); setOpenPatientId(null); setSettingsMsg(null); }}>
             <div className="side-avatar">S</div>
-            <div style={{ textAlign: "left" }}>
+            <div style={{ textAlign: "left", flexGrow: 1 }}>
               <div className="side-me-name">Secrétaire</div>
               <div className="side-me-role">Secrétaire du cabinet</div>
             </div>
+            <ChevronRight size={16} />
           </button>
           <button className="side-out" onClick={logout}>
             <LogOut size={18} />
@@ -906,484 +1077,470 @@ export default function SecretariatDashboard() {
         <SecretariatTopbar
           alertCount={alertCount}
           onSearch={(q) => {
-            const s = q.toLowerCase();
             setActiveTab("patients");
             setOpenPatientId(null);
-            setSearchQuery(q);
-            setHasSearched(true);
-            setSearchResults(activePatients.filter((p) =>
-              (p.national_id || "").toLowerCase().includes(s) ||
-              `${p.first_name} ${p.last_name}`.toLowerCase().includes(s) ||
-              `${p.last_name} ${p.first_name}`.toLowerCase().includes(s)
-            ));
+            runSearch(q, activePatients);
           }}
           onAlerts={() => { setActiveTab("alerts"); setOpenPatientId(null); }}
           onProfile={() => { setActiveTab("settings"); setOpenPatientId(null); setSettingsMsg(null); }}
         />
 
-         {!(activeTab === "patients" && openPatient) && (
-         <div className="band">
-        <div className="wrap hero-row">
-          <div>
-            <p className="kicker">PLATEFORME MÉDICALE SÉCURISÉE</p>
-              <h1 className="hero-title">
-                {activeTab === "patients" || activeTab === "new_patient" ? "Patients"
-                  : activeTab === "rdv" ? "Rendez-vous"
-                  : activeTab === "doctors" ? "Médecins du cabinet"
-                  : activeTab === "archives" ? "Archives"
-                  : activeTab === "settings" ? "Paramètres"
-                  : activeTab === "billing" ? "Facturation"
-                  : activeTab === "alerts" ? "Alertes"
-                  : "Bonjour, voici votre journée."}
-              </h1>
-              <p className="hero-sub">
-                {activeTab === "patients" || activeTab === "new_patient"
-                  ? `${patients.length} patients enregistrés`
-                  : activeTab === "rdv" ? `${appointments.length} rendez-vous au total`
-                  : activeTab === "doctors" ? `${doctors.length} médecins rattachés`
-                  : activeTab === "archives" ? `${inactivePatients.length} dossiers archivés`
-                  : activeTab === "settings" ? "Votre compte et vos identifiants"
-                  : activeTab === "billing" ? `${money(collectedTotal)} encaissés · ${unpaidCount} facture(s) impayée(s)`
-                  : activeTab === "alerts" ? "Demandes et rappels en attente"
-
-                  : `${todayCount} rendez-vous aujourd'hui · ${patients.length} patients enregistrés`}
-              </p>
+        {!(activeTab === "patients" && openPatient) && (
+          <div className="band">
+            <div className="wrap">
+              <h1 className="hero-title">{pageTitle}</h1>
+              <p className="hero-sub">{pageSub}</p>
+            </div>
           </div>
+        )}
 
+        <main className="main">
+          <div className="wrap">
+            {loadError && <div className="alert">{loadError}</div>}
 
-          {(activeTab === "patients" || activeTab === "new_patient" || activeTab === "archives") && (
-            <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: 10, paddingBottom: 4 }}>
-              <input
-                className="field"
-                style={{ width: 250 }}
-                placeholder="Nom du patient ou CIN"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              <button type="submit" className="btn btn-primary">Rechercher</button>
-            </form>
-          )}
-
-        </div>
-      </div>
-
-         )}
-         <main className="main">
-        <div className="wrap">
-          {loadError && <div className="alert">{loadError}</div>}
-
-          {activeTab === "dashboard" && (
-            <>
-              <div className="stats">
-                <button className={`stat ${dashFilter === "all" ? "on" : ""}`} onClick={() => setDashFilter("all")}>
-                  <div className="stat-k">Rendez-vous</div>
-                  <div className="stat-v">{appointments.length}</div>
-                </button>
-                <button className={`stat ${dashFilter === "today" ? "on" : ""}`} onClick={() => setDashFilter("today")}>
-                  <div className="stat-k">Aujourd&apos;hui</div>
-                  <div className="stat-v">{todayCount}</div>
-                </button>
-                <button className="stat" onClick={() => setActiveTab("patients")}>
-                  <div className="stat-k">Patients</div>
-                  <div className="stat-v">{patients.length}</div>
-                </button>
-                <button className={`stat ${dashFilter === "scheduled" ? "on" : ""}`} onClick={() => setDashFilter("scheduled")}>
-                  <div className="stat-k">Programmés</div>
-                  <div className="stat-v" style={{ color: "#a86a12" }}>{scheduledCount}</div>
-                </button>
-              </div>
-
-              <div className="panel">
-                <div className="panel-head">
-                  <h2 className="panel-title">
-                    {dashFilter === "today"
-                      ? "Rendez-vous d'aujourd'hui"
-                      : dashFilter === "scheduled"
-                      ? "Rendez-vous programmés"
-                      : "Tous les rendez-vous"}
-                  </h2>
-                  <button className="btn btn-primary btn-sm" onClick={() => setIsRdvModalOpen(true)}>
-                    Prendre un rendez-vous
-                  </button>
-                </div>
-                {displayedAppointments.length === 0 ? (
-                  <div className="empty">
-                    {dashFilter === "today"
-                      ? "Aucun rendez-vous aujourd'hui."
-                      : dashFilter === "scheduled"
-                      ? "Aucun rendez-vous programmé."
-                      : "Aucun rendez-vous à afficher."}
-                  </div>
-                ) : (
-                  displayedAppointments.map((apt) => (
-                    <button key={apt.id} className="row" onClick={() => setSelectedAppointment(apt)}>
-                      <span className="row-when">{fmtDay(apt.scheduled_at)} · {fmtTime(apt.scheduled_at)}</span>
-                      <span className="row-who">{patientName(apt.patient_id)}</span>
-                      <span className="row-doc">{doctorName(apt.doctor_id)}</span>
-                      <span className={`pill p-${apt.status}`}>{STATUS_LABELS[apt.status] || apt.status}</span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </>
-          )}
-
-          {activeTab === "rdv" && (
-            <>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                <h2 className="panel-title">Rendez-vous</h2>
-                <button className="btn btn-primary" onClick={() => setIsRdvModalOpen(true)}>Prendre un rendez-vous</button>
-              </div>
-              {appointments.length === 0 ? (
-                <div className="card empty">Aucun rendez-vous enregistré.</div>
-              ) : (
-                <div className="grid">
-                  {appointments.map((apt) => (
-                    <div key={apt.id} className="aptcard">
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                        <span className="name">{patientName(apt.patient_id)}</span>
-                        <span className={`pill p-${apt.status}`}>{STATUS_LABELS[apt.status] || apt.status}</span>
-                      </div>
-                      <div className="aptcard-when">{fmtDay(apt.scheduled_at)} · {fmtTime(apt.scheduled_at)}</div>
-                      <div className="meta">{doctorName(apt.doctor_id)}</div>
-                      <div style={{ display: "flex", gap: 8, marginTop: 18, flexWrap: "wrap" }}>
-                        <button className="btn btn-ghost btn-sm" onClick={() => { setEditingAppointment(apt); setRescheduleDate(""); setRescheduleSlots([]); setNewRescheduleTime(""); }}>
-                          Reprogrammer
-                        </button>
-                        <button className="btn btn-ghost btn-sm" onClick={() => setSelectedAppointment(apt)}>Détails</button>
-                        <button className="btn btn-danger btn-sm" onClick={() => deleteAppointment(apt.id)}>Supprimer</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
-          {activeTab === "patients" && openPatient && (
-            <PatientFile
-              patient={openPatient}
-              appointments={appointments}
-              invoices={invoices}
-              docs={docs}
-              doctorName={doctorName}
-              onBack={() => window.history.back()}
-              onNewAppointment={() => openRdvForPatient(openPatient.id)}
-              onArchive={() => { setStatusTarget({ patient: openPatient, action: "archived" }); setStatusReason(""); }}
-              onRemove={() => { setStatusTarget({ patient: openPatient, action: "removed" }); setStatusReason(""); }}
-              onViewDoc={(d) => setViewDoc(d)}
-              onDownloadDoc={openDoc}
-                 onDocsChanged={() => loadDocs(openPatient.id)}
-                 onViewAppointment={(a) => setSelectedAppointment(a)}
-                 onPatientUpdated={loadAll}
-            />
-          )}
-
-          {activeTab === "patients" && !openPatient && (
-            <div className="panel">
-              <div className="panel-head">
-                <h2 className="panel-title">
-                  {hasSearched && searchQuery.trim()
-                    ? `${searchResults.length} résultat${searchResults.length > 1 ? "s" : ""} pour « ${searchQuery.trim()} »`
-                    : `${patients.length} patient${patients.length > 1 ? "s" : ""}`}
-                </h2>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {hasSearched && searchQuery.trim() && (
-                    <button className="btn btn-ghost btn-sm" onClick={() => { setSearchQuery(""); setSearchResults([]); setHasSearched(false); }}>
-                      Tout afficher
-                    </button>
-                  )}
-                  <button className="btn btn-primary btn-sm" onClick={() => setActiveTab("new_patient")}>Créer un patient</button>
-                </div>
-              </div>
-
-              {listedPatients.length === 0 ? (
-                <div className="empty">Aucun patient ne correspond à cette recherche.</div>
-              ) : (
-                listedPatients.map((p) => (
-                  <div key={p.id}>
-                    <div className="line-item">
-                      <div style={{ minWidth: 0 }}>
-                        <div className="name">{p.last_name} {p.first_name}</div>
-                        <div className="meta">CIN {p.national_id || "—"} · groupe {p.blood_group}</div>
-                      </div>
-                      <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                        <button className="btn btn-ghost btn-sm" onClick={() => { window.history.pushState({ patient: p.id }, ""); setOpenPatientId(p.id); }}>
-                          {openPatientId === p.id ? "Replier" : "Dossier"}
-                        </button>
-                        <button className="btn btn-primary btn-sm" onClick={() => openRdvForPatient(p.id)}>Rendez-vous</button>
-                      </div>
-                    </div>
-                    {openPatientId === p.id && (
-                      <div className="folder">
-                        <div className="facts">
-                          <div><div className="fact-k">CIN</div><div className="fact-v">{p.national_id || "Non renseigné"}</div></div>
-                          <div><div className="fact-k">Groupe sanguin</div><div className="fact-v">{p.blood_group}</div></div>
-                          <div><div className="fact-k">Date de naissance</div><div className="fact-v">{p.date_of_birth ? parseLocal(p.date_of_birth).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) : "—"}</div></div>
-                          <div><div className="fact-k">Sexe</div><div className="fact-v">{p.sex === "M" ? "Homme" : p.sex === "F" ? "Femme" : "—"}</div></div>
-                          <div style={{ gridColumn: "1 / -1" }}><div className="fact-k">Adresse</div><div className="fact-v">{p.address || "Non renseignée"}</div></div>
-                        </div>
-                        <div style={{ display: "flex", gap: 8, marginBottom: 18, paddingBottom: 18, borderBottom: "1px solid #e1eaf3" }}>
-                          <button className="btn btn-ghost btn-sm" onClick={() => { setStatusTarget({ patient: p, action: "archived" }); setStatusReason(""); }}>
-                            Archiver
-                          </button>
-                          <button className="btn btn-danger btn-sm" onClick={() => { setStatusTarget({ patient: p, action: "removed" }); setStatusReason(""); }}>
-                            Retirer du cabinet
-                          </button>
-                        </div>
-
-                        <div style={{ marginBottom: 18, paddingBottom: 18, borderBottom: "1px solid #e1eaf3" }}>
-                          <div className="fact-k" style={{ marginBottom: 10 }}>Documents médicaux</div>
-
-                          {docs.length === 0 ? (
-                            <div className="meta" style={{ marginBottom: 14 }}>Aucun document pour ce patient.</div>
-                          ) : (
-                            docs.map((d) => (
-                              <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 0" }}>
-                                <span className="pill p-completed">{DOC_CATEGORIES[d.category] ?? d.category}</span>
-                                <span className="fact-v" style={{ flexGrow: 1 }}>{d.title}</span>
-                                <span className="meta" style={{ marginTop: 0 }}>{fmtDay(d.document_date)}</span>
-                                <button className="btn btn-ghost btn-sm" onClick={() => setViewDoc(d)}>Ouvrir</button>
-                              </div>
-                            ))
-                          )}
-
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 14 }}>
-                            <select className="field" value={docForm.category} onChange={(e) => setDocForm((f) => ({ ...f, category: e.target.value }))}>
-                              {Object.entries(DOC_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                            </select>
-                            <input className="field" placeholder="Bilan sanguin" value={docForm.title} onChange={(e) => setDocForm((f) => ({ ...f, title: e.target.value }))} />
-                            <input className="field" type="date" value={docForm.date} max={toISODate(new Date())} onChange={(e) => setDocForm((f) => ({ ...f, date: e.target.value }))} />
-                          </div>
-                          <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10 }}>
-                            <input key={docs.length} type="file" accept="application/pdf,image/jpeg,image/png,image/heic" onChange={(e) => setDocFile(e.target.files?.[0] ?? null)} />                            
-                            <button className="btn btn-primary btn-sm" disabled={docSaving} onClick={() => uploadDoc(p.id)}>
-                              {docSaving ? "Envoi…" : "Ajouter le document"}
-                            </button>
-                          </div>
-                          
-                          {docError && <p className="err" style={{ marginTop: 10, marginBottom: 0 }}>{docError}</p>}
-                        </div>
-                        <div className="fact-k" style={{ marginBottom: 8 }}>Rendez-vous</div>                      
-                        {appointments.filter((a) => a.patient_id === p.id).length === 0 ? (
-                          <div className="meta">Aucun rendez-vous pour ce patient.</div>
-                        ) : (
-                          appointments.filter((a) => a.patient_id === p.id).map((a) => (
-                            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 0" }}>
-                              <span className="fact-v" style={{ width: 130 }}>{fmtDay(a.scheduled_at)} · {fmtTime(a.scheduled_at)}</span>
-                              <span className="meta" style={{ flexGrow: 1, marginTop: 0 }}>{doctorName(a.doctor_id)}</span>
-                              <span className={`pill p-${a.status}`}>{STATUS_LABELS[a.status] || a.status}</span>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {activeTab === "new_patient" && (
-            <div className="card" style={{ maxWidth: 820 }}>
-              <h2 className="panel-title" style={{ marginBottom: 8 }}>Nouveau patient</h2>
-              <p style={{ fontSize: 14, color: "#5a7590", marginTop: 0, marginBottom: 24, lineHeight: 1.6, maxWidth: "66ch" }}>
-                Le patient utilisera ces identifiants pour accéder à son espace. Communiquez-lui le mot de passe
-                de vive voix et demandez-lui de le changer à sa première connexion.
-              </p>
-              <form onSubmit={handlePatientSubmit}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 18, marginBottom: 18 }}>
-                  <div><label className="lab">Nom</label><input className="field" required value={formData.lastName} onChange={(e) => setFormData((f) => ({ ...f, lastName: e.target.value }))} /></div>
-                  <div><label className="lab">Prénom</label><input className="field" required value={formData.firstName} onChange={(e) => setFormData((f) => ({ ...f, firstName: e.target.value }))} /></div>
-                  <div><label className="lab">Email</label><input className="field" type="email" required value={formData.email} onChange={(e) => setFormData((f) => ({ ...f, email: e.target.value }))} /></div>
-                  <div><label className="lab">Mot de passe temporaire</label><input className="field" type="text" required value={formData.password} onChange={(e) => setFormData((f) => ({ ...f, password: e.target.value }))} /></div>
-                  <div><label className="lab">CIN</label><input className="field" value={formData.nationalId} onChange={(e) => setFormData((f) => ({ ...f, nationalId: e.target.value }))} /></div>
-                  <div><label className="lab">Date de naissance</label><input className="field" type="date" required max={new Date().toISOString().slice(0, 10)} value={formData.dateOfBirth} onChange={(e) => setFormData((f) => ({ ...f, dateOfBirth: e.target.value }))} /></div>
-                  <div>
-                    <label className="lab">Sexe</label>
-                    <select className="field" value={formData.sex} onChange={(e) => setFormData((f) => ({ ...f, sex: e.target.value }))}>
-                      <option value="F">Femme</option><option value="M">Homme</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="lab">Groupe sanguin</label>
-                    <select className="field" value={formData.bloodGroup} onChange={(e) => setFormData((f) => ({ ...f, bloodGroup: e.target.value }))}>
-                      {["unknown", "A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((bg) => (
-                        <option key={bg} value={bg}>{bg === "unknown" ? "Inconnu" : bg}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div style={{ marginBottom: 20 }}>
-                  <label className="lab">Adresse</label>
-                  <input className="field" value={formData.address} onChange={(e) => setFormData((f) => ({ ...f, address: e.target.value }))} />
-                </div>
-                {patientFormError && <p className="err">{patientFormError}</p>}
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
-                  <button type="button" className="btn btn-ghost" onClick={() => setActiveTab("patients")}>Annuler</button>
-                  <button type="submit" className="btn btn-primary" disabled={patientFormLoading}>
-                    {patientFormLoading ? "Création…" : "Créer le compte"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {activeTab === "doctors" && (
-            <div className="panel" style={{ maxWidth: 720 }}>
-              <div className="panel-head"><h2 className="panel-title">Médecins du cabinet</h2></div>
-              {doctors.length === 0 ? (
-                <div className="empty">Aucun médecin rattaché.</div>
-              ) : (
-                doctors.map((d) => (
-                  <div key={d.id} className="line-item">
-                    <div>
-                      <div className="name">Dr. {d.first_name} {d.last_name}</div>
-                      {d.specialty && <div className="meta">{d.specialty}</div>}
-                    </div>
-                    <span className="meta" style={{ marginTop: 0 }}>
-                      {appointments.filter((a) => a.doctor_id === d.id).length} rendez-vous
+            {activeTab === "dashboard" && (
+              <>
+                <div className="kpis">
+                  <button className="kpi" onClick={() => { setActiveTab("rdv"); setRdvFilter("today"); }}>
+                    <span className="kpi-ic blue"><CalendarDays size={22} /></span>
+                    <span>
+                      <span className="kpi-k">Rendez-vous aujourd&apos;hui</span>
+                      <span className="kpi-v">{todayAppts.length}</span>
                     </span>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-                    {activeTab === "archives" && (
-            <div className="panel">
-              <div className="panel-head">
-                <h2 className="panel-title">
-                  {inactivePatients.length} dossier{inactivePatients.length > 1 ? "s" : ""} archivé{inactivePatients.length > 1 ? "s" : ""}
-                </h2>
-              </div>
-              {listedArchives.length === 0 ? (
-                <div className="empty">
-                  Aucun dossier archivé. Les patients archivés ou retirés du cabinet apparaîtront ici,
-                  avec l&apos;intégralité de leur historique.
+                  </button>
+                  <button className="kpi" onClick={() => setActiveTab("alerts")}>
+                    <span className="kpi-ic amber"><Clock size={22} /></span>
+                    <span>
+                      <span className="kpi-k">À confirmer</span>
+                      <span className="kpi-v">{alertCount}</span>
+                    </span>
+                  </button>
+                  <button className="kpi" onClick={() => setActiveTab("patients")}>
+                    <span className="kpi-ic green"><Users size={22} /></span>
+                    <span>
+                      <span className="kpi-k">Patients actifs</span>
+                      <span className="kpi-v">{activePatients.length}</span>
+                    </span>
+                  </button>
+                  <button className="kpi" onClick={() => { setActiveTab("billing"); setBillFilter("unpaid"); }}>
+                    <span className="kpi-ic red"><Wallet size={22} /></span>
+                    <span>
+                      <span className="kpi-k">Reste à encaisser</span>
+                      <span className="kpi-v">{money(outstanding)}</span>
+                    </span>
+                  </button>
                 </div>
-              ) : (
-                listedArchives.map((p) => (
-                  <div key={p.id} className="line-item">
-                    <div style={{ minWidth: 0 }}>
-                      <div className="name">{p.last_name} {p.first_name}</div>
-                      <div className="meta">
-                        CIN {p.national_id || "—"}
-                        {p.status_reason ? ` · ${p.status_reason}` : ""}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-                      <span className={`pill ${p.status === "removed" ? "p-cancelled" : "p-no_show"}`}>
-                        {p.status === "removed" ? "Retiré" : "Archivé"}
-                      </span>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={async () => {
-                          try { await changeStatus(p.id, "active"); }
-                          catch (err) { alert(err instanceof Error ? err.message : "Réactivation impossible."); }
-                        }}
-                      >
-                        Réactiver
+
+                <div className="cols">
+                  <section className="panel">
+                    <div className="panel-head">
+                      <h2 className="panel-title with-ic"><CalendarDays size={20} /> Agenda du jour</h2>
+                      <button className="btn btn-primary btn-sm" onClick={() => setIsRdvModalOpen(true)}>
+                        <Plus size={16} /> Nouveau rendez-vous
                       </button>
                     </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-
-
-          {activeTab === "billing" && (
-            <>
-              <div className="stats">
-                <div className="stat" style={{ cursor: "default" }}>
-                  <div className="stat-k">Encaissé</div>
-                  <div className="stat-v" style={{ color: "#1a7f4b" }}>{money(collectedTotal)}</div>
-                </div>
-                <div className="stat" style={{ cursor: "default" }}>
-                  <div className="stat-k">Facturé</div>
-                  <div className="stat-v">{money(invoicedTotal)}</div>
-                </div>
-                <div className="stat" style={{ cursor: "default" }}>
-                  <div className="stat-k">Reste à encaisser</div>
-                  <div className="stat-v" style={{ color: invoicedTotal - collectedTotal > 0 ? "#a86a12" : undefined }}>
-                    {money(Math.max(0, invoicedTotal - collectedTotal))}
-                  </div>
-                </div>
-                <div className="stat" style={{ cursor: "default" }}>
-                  <div className="stat-k">Impayées</div>
-                  <div className="stat-v">{unpaidCount}</div>
-                </div>
-              </div>
-               <div className="panel">
-                <div className="panel-head">
-                  <h2 className="panel-title">
-                    {invoices.length} facture{invoices.length > 1 ? "s" : ""}
-                  </h2>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={() => {
-                      setBillForm({
-                        patientId: "",
-                        doctorId: doctors.length > 0 ? doctors[0].id : "",
-                        procedureId: "",
-                        description: "",
-                        amount: "",
-                      });
-                      setBillError("");
-                      setBillOpen(true);
-                    }}
-                  >
-                    Nouvelle facture
-                  </button>
-                </div>
-                {invoices.length === 0 ? (
-                  <div className="empty">
-                    Aucune facture. Les médecins créent les factures depuis le dossier patient,
-                    après chaque consultation.
-                  </div>
-                ) : (
-                  invoices.map((inv) => (
-                    <div key={inv.id} className="line-item">
-                      <div style={{ minWidth: 0 }}>
-                        <div className="name">{patientName(inv.patient_id)}</div>
-                        <div className="meta">
-                          {inv.description} · {fmtDay(inv.issued_at)}
-                          {inv.doctor_id ? ` · ${doctorName(inv.doctor_id)}` : ""}
+                    {todayAppts.length === 0 ? (
+                      <div className="empty">
+                        Aucun rendez-vous aujourd&apos;hui.
+                        <div style={{ marginTop: 10 }}>
+                          <button className="btn-link" onClick={() => setIsRdvModalOpen(true)}>Planifier un rendez-vous</button>
                         </div>
                       </div>
-                      <div style={{ display: "flex", gap: 12, alignItems: "center", flexShrink: 0 }}>
-                        <div style={{ textAlign: "right" }}>
-                          <div className="name">{money(inv.amount_due)}</div>
-                          {inv.balance_due > 0 && (
-                            <div className="meta" style={{ color: "#a86a12" }}>
-                              reste {money(inv.balance_due)}
+                    ) : (
+                      todayAppts.map((a) => (
+                        <div key={a.id} className="agenda-row" onClick={() => setSelectedAppointment(a)}>
+                          <div className="agenda-time">{fmtTime(a.scheduled_at)}</div>
+                          <div className={`agenda-bar b-${a.status}`} />
+                          <div className="who" style={{ flexGrow: 1, minWidth: 0 }}>
+                            <span className="avatar">{patientInitials(a.patient_id)}</span>
+                            <div style={{ minWidth: 0 }}>
+                              <div className="name">{patientName(a.patient_id)}</div>
+                              <div className="meta">{a.reason || "Consultation"}, {doctorName(a.doctor_id)}</div>
                             </div>
-                          )}
+                          </div>
+                          {statusPill(a.status)}
+                          <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); setSelectedAppointment(a); }}>Voir</button>
                         </div>
-                        <span className={`pill ${inv.status === "paid" ? "p-confirmed" : inv.status === "partial" ? "p-scheduled" : "p-cancelled"}`}>
-                          {inv.status === "paid" ? "Réglée" : inv.status === "partial" ? "Partielle" : "Impayée"}
+                      ))
+                    )}
+                  </section>
+
+                  <div className="stack">
+                    <section className="panel">
+                      <div className="panel-head">
+                        <h2 className="panel-title with-ic"><Clock size={20} /> Prochains rendez-vous</h2>
+                        <button className="btn-link" onClick={() => { setActiveTab("rdv"); setRdvFilter("upcoming"); }}>Voir tout</button>
+                      </div>
+                      {upcomingAppts.length === 0 ? (
+                        <div className="empty">Aucun rendez-vous à venir.</div>
+                      ) : (
+                        upcomingAppts.slice(0, 5).map((a) => (
+                          <div key={a.id} className="mini-row" onClick={() => setSelectedAppointment(a)}>
+                            <div className="date-box">
+                              <b>{parseLocal(a.scheduled_at).getDate()}</b>
+                              <span>{parseLocal(a.scheduled_at).toLocaleDateString("fr-FR", { month: "short" })}</span>
+                            </div>
+                            <div style={{ flexGrow: 1, minWidth: 0 }}>
+                              <div className="name">{patientName(a.patient_id)}</div>
+                              <div className="meta">{fmtTime(a.scheduled_at)}, {doctorName(a.doctor_id)}</div>
+                            </div>
+                            {statusPill(a.status)}
+                          </div>
+                        ))
+                      )}
+                    </section>
+
+                    <section className="panel">
+                      <div className="panel-head">
+                        <h2 className="panel-title with-ic"><Receipt size={20} /> Factures impayées</h2>
+                        <button className="btn-link" onClick={() => { setActiveTab("billing"); setBillFilter("unpaid"); }}>Voir tout</button>
+                      </div>
+                      {unpaidInvoices.length === 0 ? (
+                        <div className="empty">Toutes les factures sont réglées.</div>
+                      ) : (
+                        unpaidInvoices.slice(0, 4).map((inv) => (
+                          <div key={inv.id} className="mini-row">
+                            <span className="kpi-ic red sm"><FileText size={17} /></span>
+                            <div style={{ flexGrow: 1, minWidth: 0 }}>
+                              <div className="name">{patientName(inv.patient_id)}</div>
+                              <div className="meta">Facture {invoiceNumber(inv)}, reste {money(inv.balance_due ?? inv.amount_due)}</div>
+                            </div>
+                            <button className="btn btn-primary btn-sm" onClick={() => openPay(inv)}>Encaisser</button>
+                          </div>
+                        ))
+                      )}
+                    </section>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {activeTab === "rdv" && (
+              <>
+                <div className="toolbar">
+                  <div className="chips">
+                    {RDV_FILTERS.map((f) => (
+                      <button key={f.id} className={`chip ${rdvFilter === f.id ? "on" : ""}`} onClick={() => setRdvFilter(f.id)}>
+                        {f.label} <em>{f.list.length}</em>
+                      </button>
+                    ))}
+                  </div>
+                  <button className="btn btn-primary" onClick={() => setIsRdvModalOpen(true)}><Plus size={16} /> Nouveau rendez-vous</button>
+                </div>
+                <div className="panel">
+                  {rdvList.length === 0 ? (
+                    <div className="empty">Aucun rendez-vous dans cette catégorie.</div>
+                  ) : (
+                    <div className="tbl-wrap">
+                      <table className="tbl">
+                        <thead>
+                          <tr><th>Date &amp; Heure</th><th>Patient</th><th>Motif</th><th>Médecin</th><th>Statut</th><th style={{ textAlign: "right" }}>Actions</th></tr>
+                        </thead>
+                        <tbody>
+                          {rdvList.map((a) => {
+                            const future = ts(a.scheduled_at) >= nowMs;
+                            return (
+                              <tr key={a.id} className="tbl-row" onClick={() => setSelectedAppointment(a)}>
+                                <td>
+                                  <div className="name">{parseLocal(a.scheduled_at).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })}</div>
+                                  <div className="meta">{fmtTime(a.scheduled_at)}</div>
+                                </td>
+                                <td>
+                                  <div className="who">
+                                    <span className="avatar">{patientInitials(a.patient_id)}</span>
+                                    <span className="name">{patientName(a.patient_id)}</span>
+                                  </div>
+                                </td>
+                                <td className="muted">{a.reason || "Consultation"}</td>
+                                <td>{doctorName(a.doctor_id)}</td>
+                                <td>{statusPill(a.status)}</td>
+                                <td className="tbl-actions" onClick={(e) => e.stopPropagation()}>
+                                  <span className="tbl-actions-inner">
+                                    {future && a.status === "scheduled" && (
+                                      <button className="icon-btn icon-ok" title="Confirmer" aria-label="Confirmer" onClick={() => confirmAppointment(a.id)}><Check size={16} /></button>
+                                    )}
+                                    {future && a.status !== "cancelled" && (
+                                      <button className="icon-btn" title="Reprogrammer" aria-label="Reprogrammer" onClick={() => { setEditingAppointment(a); setRescheduleDate(""); setRescheduleSlots([]); setNewRescheduleTime(""); }}><CalendarClock size={16} /></button>
+                                    )}
+                                    <button className="icon-btn" title="Voir" aria-label="Voir" onClick={() => setSelectedAppointment(a)}><Eye size={16} /></button>
+                                    <button className="icon-btn danger" title="Supprimer" aria-label="Supprimer" onClick={() => deleteAppointment(a.id)}><Trash2 size={16} /></button>
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {activeTab === "patients" && openPatient && (
+              <PatientFile
+                patient={openPatient}
+                appointments={appointments}
+                invoices={invoices}
+                docs={docs}
+                doctorName={doctorName}
+                onBack={() => window.history.back()}
+                onNewAppointment={() => openRdvForPatient(openPatient.id)}
+                onViewAppointment={(a) => setSelectedAppointment(a)}
+                onArchive={() => { setStatusTarget({ patient: openPatient, action: "archived" }); setStatusReason(""); }}
+                onRemove={() => { setStatusTarget({ patient: openPatient, action: "removed" }); setStatusReason(""); }}
+                onViewDoc={(d) => setViewDoc(d)}
+                onDownloadDoc={openDoc}
+                onDocsChanged={() => loadDocs(openPatient.id)}
+                onPatientUpdated={loadAll}
+              />
+            )}
+
+            {activeTab === "patients" && !openPatient && (
+              <>
+                {searching && (
+                  <div className="search-note">
+                    <span>{searchResults.length} résultat{searchResults.length > 1 ? "s" : ""} pour « {searchQuery.trim()} »</span>
+                    <button className="btn-link" onClick={clearSearch}>Afficher tous les patients</button>
+                  </div>
+                )}
+                <div className="panel">
+                  <div className="panel-head">
+                    <h2 className="panel-title">Liste des patients</h2>
+                    <button className="btn btn-primary btn-sm" onClick={() => setActiveTab("new_patient")}>
+                      <Plus size={16} /> Nouveau patient
+                    </button>
+                  </div>
+
+                  {listedPatients.length === 0 ? (
+                    <div className="empty">Aucun patient ne correspond à cette recherche.</div>
+                  ) : (
+                    <div className="tbl-wrap">
+                      <table className="tbl">
+                        <thead>
+                          <tr><th>Patient</th><th>CIN</th><th>Âge</th><th>Sexe</th><th>Groupe sanguin</th><th>Prochain RDV</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                          {listedPatients.map((p) => {
+                            const age = ageFrom(p.date_of_birth);
+                            const next = nextApptOf(p.id);
+                            return (
+                              <tr key={p.id} className="tbl-row" onClick={() => openFile(p.id)}>
+                                <td>
+                                  <div className="who">
+                                    <span className="avatar">{initials(p)}</span>
+                                    <div>
+                                      <div className="name">{p.first_name} {p.last_name}</div>
+                                      <div className="meta">{p.email || p.phone || "Contact non renseigné"}</div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td>{p.national_id || <span className="muted">Non renseigné</span>}</td>
+                                <td>{age !== null ? `${age} ans` : <span className="muted">—</span>}</td>
+                                <td>{p.sex === "M" ? "Homme" : p.sex === "F" ? "Femme" : <span className="muted">—</span>}</td>
+                                <td>{p.blood_group && p.blood_group !== "unknown" ? p.blood_group : <span className="muted">{bloodLabel(p.blood_group)}</span>}</td>
+                                <td>{next ? `${fmtDay(next.scheduled_at)} - ${fmtTime(next.scheduled_at)}` : <span className="muted">Aucun</span>}</td>
+                                <td className="tbl-actions">
+                                  <span className="tbl-actions-inner">
+                                    <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); openFile(p.id); }}>Dossier</button>
+                                    <button className="btn btn-primary btn-sm" onClick={(e) => { e.stopPropagation(); openRdvForPatient(p.id); }}>Rendez-vous</button>
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {activeTab === "new_patient" && (
+              <div className="card" style={{ maxWidth: 820 }}>
+                <h2 className="panel-title" style={{ marginBottom: 8 }}>Nouveau patient</h2>
+                <p style={{ fontSize: 14, color: "#5a7590", marginTop: 0, marginBottom: 24, lineHeight: 1.6, maxWidth: "66ch" }}>
+                  Le patient utilisera ces identifiants pour accéder à son espace. Communiquez-lui le mot de passe
+                  de vive voix et demandez-lui de le changer à sa première connexion.
+                </p>
+                <form onSubmit={handlePatientSubmit}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 18, marginBottom: 18 }}>
+                    <div><label className="lab">Nom</label><input className="field" required value={formData.lastName} onChange={(e) => setFormData((f) => ({ ...f, lastName: e.target.value }))} /></div>
+                    <div><label className="lab">Prénom</label><input className="field" required value={formData.firstName} onChange={(e) => setFormData((f) => ({ ...f, firstName: e.target.value }))} /></div>
+                    <div><label className="lab">Email</label><input className="field" type="email" required value={formData.email} onChange={(e) => setFormData((f) => ({ ...f, email: e.target.value }))} /></div>
+                    <div><label className="lab">Mot de passe temporaire</label><input className="field" type="text" required value={formData.password} onChange={(e) => setFormData((f) => ({ ...f, password: e.target.value }))} /></div>
+                    <div><label className="lab">CIN</label><input className="field" value={formData.nationalId} onChange={(e) => setFormData((f) => ({ ...f, nationalId: e.target.value }))} /></div>
+                    <div><label className="lab">Date de naissance</label><input className="field" type="date" required max={new Date().toISOString().slice(0, 10)} value={formData.dateOfBirth} onChange={(e) => setFormData((f) => ({ ...f, dateOfBirth: e.target.value }))} /></div>
+                    <div>
+                      <label className="lab">Sexe</label>
+                      <select className="field" value={formData.sex} onChange={(e) => setFormData((f) => ({ ...f, sex: e.target.value }))}>
+                        <option value="F">Femme</option><option value="M">Homme</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="lab">Groupe sanguin</label>
+                      <select className="field" value={formData.bloodGroup} onChange={(e) => setFormData((f) => ({ ...f, bloodGroup: e.target.value }))}>
+                        {["unknown", "A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((bg) => (
+                          <option key={bg} value={bg}>{bg === "unknown" ? "Non renseigné" : bg}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: 20 }}>
+                    <label className="lab">Adresse</label>
+                    <input className="field" value={formData.address} onChange={(e) => setFormData((f) => ({ ...f, address: e.target.value }))} />
+                  </div>
+                  {patientFormError && <p className="err">{patientFormError}</p>}
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+                    <button type="button" className="btn btn-ghost" onClick={() => setActiveTab("patients")}>Annuler</button>
+                    <button type="submit" className="btn btn-primary" disabled={patientFormLoading}>
+                      {patientFormLoading ? "Création…" : "Créer le compte"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {activeTab === "doctors" && (
+              <div className="panel" style={{ maxWidth: 760 }}>
+                <div className="panel-head"><h2 className="panel-title">Médecins du cabinet</h2></div>
+                {doctors.length === 0 ? (
+                  <div className="empty">Aucun médecin rattaché.</div>
+                ) : (
+                  doctors.map((d) => (
+                    <div key={d.id} className="line-item">
+                      <div className="who">
+                        <span className="avatar"><Stethoscope size={18} /></span>
+                        <div>
+                          <div className="name">Dr. {d.first_name} {d.last_name}</div>
+                          <div className="meta">{d.specialty || "Médecine générale"}</div>
+                        </div>
+                      </div>
+                      <span className="meta" style={{ marginTop: 0 }}>
+                        {appointments.filter((a) => a.doctor_id === d.id).length} rendez-vous
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {activeTab === "archives" && (
+              <div className="panel">
+                <div className="panel-head">
+                  <h2 className="panel-title">Dossiers archivés ou retirés</h2>
+                </div>
+                {listedArchives.length === 0 ? (
+                  <div className="empty">
+                    Aucun dossier archivé. Les patients archivés ou retirés du cabinet apparaîtront ici,
+                    avec l&apos;intégralité de leur historique.
+                  </div>
+                ) : (
+                  listedArchives.map((p) => (
+                    <div key={p.id} className="line-item">
+                      <div className="who">
+                        <span className="avatar">{initials(p)}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <div className="name">{p.first_name} {p.last_name}</div>
+                          <div className="meta">
+                            CIN {p.national_id || "non renseigné"}
+                            {p.status_reason ? `, ${p.status_reason}` : ""}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+                        <span className={`pill ${p.status === "removed" ? "p-no_show" : "p-cancelled"}`}>
+                          {p.status === "removed" ? "Retiré" : "Archivé"}
                         </span>
-                        {inv.balance_due > 0 && (
-                          <button
-                            className="btn btn-primary btn-sm"
-                            onClick={() => {
-                              setPayTarget(inv);
-                              setPayForm({ amount: String(inv.balance_due), method: "cash", reference: "" });
-                              setPayError("");
-                            }}
-                          >
-                            Encaisser
-                          </button>
-                        )}
+                        <button className="btn btn-ghost btn-sm" onClick={() => openFile(p.id)}>Dossier</button>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={async () => {
+                            try { await changeStatus(p.id, "active"); }
+                            catch (err) { alert(err instanceof Error ? err.message : "Réactivation impossible."); }
+                          }}
+                        >
+                          Réactiver
+                        </button>
                       </div>
                     </div>
                   ))
                 )}
               </div>
-            </>
-          )}
+            )}
+
+            {activeTab === "billing" && (
+              <>
+                <div className="kpis">
+                  <div className="kpi static">
+                    <span className="kpi-ic green"><Wallet size={22} /></span>
+                    <span><span className="kpi-k">Encaissé</span><span className="kpi-v">{money(collectedTotal)}</span></span>
+                  </div>
+                  <div className="kpi static">
+                    <span className="kpi-ic blue"><FileText size={22} /></span>
+                    <span><span className="kpi-k">Facturé</span><span className="kpi-v">{money(invoicedTotal)}</span></span>
+                  </div>
+                  <div className="kpi static">
+                    <span className="kpi-ic amber"><Clock size={22} /></span>
+                    <span><span className="kpi-k">Reste à encaisser</span><span className="kpi-v">{money(outstanding)}</span></span>
+                  </div>
+                  <div className="kpi static">
+                    <span className="kpi-ic red"><Receipt size={22} /></span>
+                    <span><span className="kpi-k">Factures impayées</span><span className="kpi-v">{unpaidInvoices.length}</span></span>
+                  </div>
+                </div>
+
+                <div className="toolbar">
+                  <div className="chips">
+                    {BILL_FILTERS.map((f) => (
+                      <button key={f.id} className={`chip ${billFilter === f.id ? "on" : ""}`} onClick={() => setBillFilter(f.id)}>
+                        {f.label} <em>{f.list.length}</em>
+                      </button>
+                    ))}
+                  </div>
+                  <button className="btn btn-primary" onClick={openBill}><Plus size={16} /> Nouvelle facture</button>
+                </div>
+
+                <div className="panel">
+                  {billList.length === 0 ? (
+                    <div className="empty">Aucune facture dans cette catégorie.</div>
+                  ) : (
+                    <div className="tbl-wrap">
+                      <table className="tbl">
+                        <thead>
+                          <tr><th>Facture</th><th>Patient</th><th>Prestation</th><th>Date</th><th>Médecin</th><th>Montant</th><th>Reste</th><th>Statut</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                          {billList.map((inv) => (
+                            <tr key={inv.id}>
+                              <td className="name">{invoiceNumber(inv)}</td>
+                              <td>
+                                <div className="who">
+                                  <span className="avatar">{patientInitials(inv.patient_id)}</span>
+                                  <span className="name">{patientName(inv.patient_id)}</span>
+                                </div>
+                              </td>
+                              <td className="muted">{inv.description}</td>
+                              <td>{fmtDay(inv.issued_at)}</td>
+                              <td>{inv.doctor_id ? doctorName(inv.doctor_id) : <span className="muted">—</span>}</td>
+                              <td className="name">{money(inv.amount_due)}</td>
+                              <td style={{ color: inv.balance_due > 0 ? "#a86a12" : "#5a7590", fontWeight: 600 }}>{money(inv.balance_due ?? 0)}</td>
+                              <td>{invoicePill(inv.status)}</td>
+                              <td className="tbl-actions">
+                                {inv.balance_due > 0 && (
+                                  <button className="btn btn-primary btn-sm" onClick={() => openPay(inv)}>Encaisser</button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
 
             {activeTab === "settings" && (
               <div style={{ maxWidth: 620 }}>
@@ -1425,18 +1582,29 @@ export default function SecretariatDashboard() {
             )}
 
             {activeTab === "alerts" && (
-              <div className="card" style={{ maxWidth: 720 }}>
-                <h2 className="panel-title" style={{ marginBottom: 10 }}>Alertes</h2>
-                <p style={{ fontSize: 14, color: "#5a7590", margin: 0, lineHeight: 1.6 }}>
-                  Rien à signaler. Les demandes d&apos;accès aux dossiers et les rendez-vous non confirmés apparaîtront ici.
-                </p>
+              <div className="panel" style={{ maxWidth: 820 }}>
+                <div className="panel-head"><h2 className="panel-title">Rendez-vous à confirmer</h2></div>
+                {alertCount === 0 ? (
+                  <div className="empty">Rien à signaler. Les rendez-vous non confirmés apparaîtront ici.</div>
+                ) : (
+                  appointments
+                    .filter((a) => a.status === "scheduled" && parseLocal(a.scheduled_at).getTime() >= Date.now())
+                    .sort((a, b) => parseLocal(a.scheduled_at).getTime() - parseLocal(b.scheduled_at).getTime())
+                    .map((a) => (
+                      <div key={a.id} className="line-item">
+                        <div>
+                          <div className="name">{patientName(a.patient_id)}</div>
+                          <div className="meta">{fmtDay(a.scheduled_at)} - {fmtTime(a.scheduled_at)}, {doctorName(a.doctor_id)}</div>
+                        </div>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setSelectedAppointment(a)}>Voir</button>
+                      </div>
+                    ))
+                )}
               </div>
-          )}
-        
-        </div>
-      </main>
+            )}
+          </div>
+        </main>
       </div>
-      
 
       {isRdvModalOpen && (
         <div className="overlay" onClick={closeRdvModal}>
@@ -1447,7 +1615,7 @@ export default function SecretariatDashboard() {
               <label className="lab">Patient</label>
               <select className="field" required value={rdvFormData.patientId} onChange={(e) => setRdvFormData((f) => ({ ...f, patientId: e.target.value }))}>
                 <option value="">Choisir un patient</option>
-                {patients.map((p) => (
+                {activePatients.map((p) => (
                   <option key={p.id} value={p.id}>{p.last_name} {p.first_name}{p.national_id ? ` — ${p.national_id}` : ""}</option>
                 ))}
               </select>
@@ -1485,7 +1653,7 @@ export default function SecretariatDashboard() {
                 })}
                 <button
                   type="button"
-                  className={`day day-more ${showCustomDate ? "on" : ""}`}
+                  className={`day ${showCustomDate ? "on" : ""}`}
                   onClick={() => setShowCustomDate((v) => !v)}
                 >
                   <span className="day-top">Autre</span>
@@ -1598,7 +1766,7 @@ export default function SecretariatDashboard() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3 className="modal-title" style={{ marginBottom: 6 }}>Reprogrammer</h3>
             <p style={{ fontSize: 14, color: "#5a7590", marginTop: 0, marginBottom: 22 }}>
-              {patientName(editingAppointment.patient_id)} · actuellement le{" "}
+              {patientName(editingAppointment.patient_id)}, actuellement le{" "}
               {parseLocal(editingAppointment.scheduled_at).toLocaleDateString("fr-FR", {
                 weekday: "long", day: "numeric", month: "long",
               })}{" "}
@@ -1627,7 +1795,7 @@ export default function SecretariatDashboard() {
                 })}
                 <button
                   type="button"
-                  className={`day day-more ${showCustomReDate ? "on" : ""}`}
+                  className={`day ${showCustomReDate ? "on" : ""}`}
                   onClick={() => setShowCustomReDate((v) => !v)}
                 >
                   <span className="day-top">Autre</span>
@@ -1696,7 +1864,6 @@ export default function SecretariatDashboard() {
           </div>
         </div>
       )}
-
 
       {billOpen && (
         <div className="overlay" onClick={() => setBillOpen(false)}>
@@ -1802,7 +1969,7 @@ export default function SecretariatDashboard() {
           <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={submitPayment}>
             <h3 className="modal-title">Enregistrer un règlement</h3>
             <p style={{ fontSize: 14, color: "#5a7590", marginTop: 0, marginBottom: 20 }}>
-              {patientName(payTarget.patient_id)} · {payTarget.description}
+              {patientName(payTarget.patient_id)}, {payTarget.description}
             </p>
 
             <div className="facts" style={{ marginBottom: 20 }}>
@@ -1878,12 +2045,12 @@ export default function SecretariatDashboard() {
               {statusTarget.action === "archived" ? "Archiver ce dossier ?" : "Retirer ce patient du cabinet ?"}
             </h3>
             <p style={{ fontSize: 15, fontWeight: 600, margin: "0 0 6px" }}>
-              {statusTarget.patient.last_name} {statusTarget.patient.first_name}
+              {statusTarget.patient.first_name} {statusTarget.patient.last_name}
             </p>
             <p style={{ fontSize: 14, color: "#5a7590", lineHeight: 1.6, marginTop: 0 }}>
               {statusTarget.action === "archived"
-                ? "Le dossier sort des listes courantes mais reste consultable dans les archives. Rien n'est supprimé, et vous pouvez le réactiver à tout moment."
-                : "Le dossier est retiré des listes courantes. Ses consultations, ordonnances et factures restent conservées dans les archives. Aucune donnée n'est effacée."}
+                ? "Le dossier sort des listes courantes mais reste consultable dans les dossiers archivés. Rien n'est supprimé, et vous pouvez le réactiver à tout moment."
+                : "Le dossier est retiré des listes courantes. Ses consultations, ordonnances et factures restent conservées. Aucune donnée n'est effacée."}
             </p>
 
             <div style={{ marginTop: 18 }}>
@@ -1914,7 +2081,6 @@ export default function SecretariatDashboard() {
       )}
 
       {viewDoc && <DocumentViewer doc={viewDoc} onClose={() => setViewDoc(null)} />}
-
     </div>
   );
 }

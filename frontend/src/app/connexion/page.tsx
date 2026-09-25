@@ -2,27 +2,103 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Mail, Lock, Eye, EyeOff, User, UserRound, Stethoscope, Building2, CircleAlert } from "lucide-react";
 import { api, saveSession, TokenResponse } from "@/lib/api";
+import AuthLayout from "@/components/AuthLayout";
+
+type Role = "patient" | "secretary" | "doctor" | "clinic_admin";
+
+const ROLES: { id: Role; label: string; icon: typeof User; space: string }[] = [
+  { id: "patient", label: "Patient", icon: User, space: "Espace patient" },
+  { id: "secretary", label: "Secrétaire", icon: UserRound, space: "Espace secrétariat" },
+  { id: "doctor", label: "Médecin", icon: Stethoscope, space: "Espace médecin" },
+  { id: "clinic_admin", label: "Cabinet", icon: Building2, space: "Administration du cabinet" },
+];
+
+const HOME: Record<string, string> = {
+  patient: "/dashboard",
+  doctor: "/doctor/dashboard",
+  secretary: "/secretariat",
+  clinic_admin: "/admin",
+};
 
 export default function ConnexionPage() {
   const router = useRouter();
-  const [role, setRole] = useState<"patient" | "secretary" | "doctor" | "clinic_admin">("patient");
+  const [role, setRole] = useState<Role>("patient");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const labels = { patient: "Espace patient", secretary: "Espace secrétaire médicale", doctor: "Espace médecin", clinic_admin: "Administration du cabinet" };
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setError(""); setLoading(true);
+    event.preventDefault();
+    setError("");
+    setLoading(true);
     try {
       const session = await api<TokenResponse>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
-            if (session.role !== role) { setError("Ce compte appartient à un autre espace. Sélectionnez le bon onglet."); setLoading(false); return; }        
+      if (session.role !== role) {
+        const right = ROLES.find((r) => r.id === session.role);
+        setError(`Ce compte appartient à l'onglet « ${right?.label ?? session.role} ». Sélectionnez-le puis reconnectez-vous.`);
+        setLoading(false);
+        return;
+      }
       saveSession(session);
-            router.push(session.role === "patient" ? "/dashboard" : session.role === "doctor" ? "/doctor/dashboard" : session.role === "secretary" ? "/secretariat" : session.role === "clinic_admin" ? "/admin" : "/professionnel");
-    } catch (err) { setError(err instanceof Error ? err.message : "Connexion impossible."); } finally { setLoading(false); }
+      router.push(HOME[session.role] ?? "/professionnel");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Connexion impossible.");
+    } finally {
+      setLoading(false);
+    }
   }
 
- 
-  return <main className="authPage"><section className="authPanel"><a className="brand" href="/">MedLink</a><div className="authContent"><p className="eyebrow">CONNEXION SÉCURISÉE</p><h1>Bienvenue.</h1><p className="authText">Choisissez votre espace puis connectez-vous.</p><div className="roleTabs">{(["patient", "secretary", "doctor", "clinic_admin"] as const).map((item) => <button key={item} type="button" className={role === item ? "selected" : ""} onClick={() => { setRole(item); setError(""); }}>{item === "patient" ? "Patient" : item === "secretary" ? "Secrétaire" : item === "doctor" ? "Médecin" : "Cabinet"}</button>)}</div><form onSubmit={handleSubmit}><p className="selectedRole">{labels[role]}</p><label htmlFor="email">Adresse e-mail</label><input id="email" type="email" placeholder="vous@exemple.com" value={email} onChange={(event) => setEmail(event.target.value)} required /><label htmlFor="password">Mot de passe</label><input id="password" type="password" placeholder="Votre mot de passe" value={password} onChange={(event) => setPassword(event.target.value)} required />{error && <p className="formError">{error}</p>}<button className="button authButton" type="submit" disabled={loading}>{loading ? "Connexion..." : "Se connecter"}</button></form><p className="formHint">Vous n’avez pas de compte ? <a href="/inscription">Créer un accès</a></p></div></section><aside className="authAside"><p className="eyebrow">MEDLINK</p><h2>Chaque accès est protégé selon le rôle de son utilisateur.</h2><p>Le patient consulte son dossier, le médecin soigne et la secrétaire gère l’accueil administratif.</p></aside></main>;
-}  
+  const current = ROLES.find((r) => r.id === role)!;
+
+  return (
+    <AuthLayout headline="Chaque accès est protégé selon le rôle de son utilisateur.">
+      <h1>Bienvenue</h1>
+      <p className="au-lead">Choisissez votre espace, puis connectez-vous avec votre adresse e-mail.</p>
+
+      <div className="au-tabs" role="tablist" aria-label="Espace de connexion">
+        {ROLES.map((r) => (
+          <button
+            key={r.id}
+            type="button"
+            role="tab"
+            aria-selected={role === r.id}
+            className={`au-tab ${role === r.id ? "on" : ""}`}
+            onClick={() => { setRole(r.id); setError(""); }}
+          >
+            <r.icon size={19} />
+            {r.label}
+          </button>
+        ))}
+      </div>
+
+      <form onSubmit={handleSubmit} aria-label={current.space}>
+        <label className="au-label" htmlFor="email">Adresse e-mail</label>
+        <div className="au-field">
+          <Mail size={18} />
+          <input id="email" className="au-input" type="email" autoComplete="email" placeholder="vous@exemple.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </div>
+
+        <label className="au-label" htmlFor="password">Mot de passe</label>
+        <div className="au-field">
+          <Lock size={18} />
+          <input id="password" className="au-input" type={showPwd ? "text" : "password"} autoComplete="current-password" placeholder="Votre mot de passe" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <button type="button" className="au-eye" onClick={() => setShowPwd((v) => !v)} aria-label={showPwd ? "Masquer le mot de passe" : "Afficher le mot de passe"}>
+            {showPwd ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        </div>
+
+        {error && <p className="au-error"><CircleAlert size={18} style={{ flexShrink: 0 }} />{error}</p>}
+
+        <button className="au-btn" type="submit" disabled={loading}>
+          {loading ? "Connexion…" : `Se connecter à l'${current.space.toLowerCase()}`}
+        </button>
+      </form>
+
+      <p className="au-hint">Vous n&apos;avez pas de compte ? <a href="/inscription">Créer un accès</a></p>
+    </AuthLayout>
+  );
+}

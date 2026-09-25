@@ -549,7 +549,7 @@ export default function PatientFile({
 
       <section className="pf-card">
         <div className="pf-head">
-          <div className="pf-avatar"><User size={44} fill="currentColor" strokeWidth={1.2} /></div>
+          <div className="pf-avatar"><User size={64} fill="currentColor" strokeWidth={1} /></div>
           <div className="pf-id">
             <h2 className="pf-name">
               {patient.first_name} {patient.last_name}
@@ -929,7 +929,7 @@ export default function PatientFile({
         .pf-avatar {
           width: 96px; height: 96px; border-radius: 50%; flex-shrink: 0;
           display: flex; align-items: flex-end; justify-content: center; overflow: hidden;
-          background: var(--blue-soft); color: var(--blue); padding-bottom: 14px; box-sizing: border-box;
+          background: var(--blue-soft); color: var(--blue); padding-bottom: 6px; box-sizing: border-box;
         }
         .pf-id { flex-grow: 1; min-width: 0; }
         .pf-name {
@@ -1053,13 +1053,14 @@ export default function PatientFile({
         .pf-empty { padding: 28px 20px; text-align: center; font-size: 14px; color: var(--muted); border: 1px dashed var(--line); border-radius: 12px; }
         .pf-empty-sm { padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 
-        .pf-next { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; }
-        .pf-date { min-width: 48px; padding: 6px 12px 6px 0; border-right: 1px solid var(--line); text-align: center; }
+        .pf-next { display: flex; align-items: center; gap: 10px; padding: 12px; font-size: 13px; border: 1px solid var(--line); border-radius: 12px; }
+        .pf-date { min-width: 44px; padding: 6px 10px 6px 0; border-right: 1px solid var(--line); text-align: center; }
         .pf-date b { display: block; font-size: 22px; font-weight: 800; line-height: 1.1; }
         .pf-date span { font-size: 12px; color: var(--muted); }
         .pf-next-time { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; white-space: nowrap; }
         .pf-next-time svg { color: var(--muted); }
         .pf-last { display: flex; align-items: center; gap: 10px; }
+        .pf-mini .pf-strong { font-weight: 500; font-size: 13px; }
         .pf-mini { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
         .pf-mini:first-of-type { border-top: none; padding-top: 0; }
 
