@@ -1214,3 +1214,23 @@ button.dd-stat:hover { border-color: #cddef1; box-shadow: 0 8px 20px rgba(10, 37
 .fx-col-bar { background: #1877e0; }
 .fx-label { margin-top: 8px; font-size: 12px; font-weight: 600; color: #0a2540; text-transform: capitalize; }
 .fx-val { font-size: 11px; color: #5a7590; margin-bottom: 8px; }
+
+/* ===== Dossier patient côté médecin ===== */
+.dp-avatar { align-items: center; padding: 0; font-size: 30px; font-weight: 800; }
+.dp-head-btns { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+.dp-count { font-style: normal; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 20px; background: #eef2f6; color: #5a7590; }
+.pd-tab.on .dp-count { background: #eaf3fd; color: #1877e0; }
+.dp-timeline { display: flex; flex-direction: column; gap: 14px; }
+.dp-consult { padding: 16px; border: 1px solid #e1eaf3; border-radius: 12px; }
+.dp-consult-top { display: flex; align-items: center; gap: 12px; }
+.dp-consult-top .pd-sub::first-letter { text-transform: uppercase; }
+.dp-notes { margin: 12px 0 0; padding: 12px 14px; border-radius: 10px; background: #f7fafd; font-size: 14px; line-height: 1.6; color: #34506d; white-space: pre-wrap; }
+.dp-rx-list { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.dp-rx { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; }
+.dp-rx svg { color: #d9731a; margin-top: 2px; flex-shrink: 0; }
+.dp-rx b { display: block; font-weight: 600; }
+.dp-rx span { display: block; color: #5a7590; margin-top: 1px; }
+.dp-consult-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.pd-form textarea { padding: 10px 12px; font: inherit; font-size: 14px; color: #0a2540; border: 1px solid #e1eaf3; border-radius: 9px; resize: vertical; }
+.pd-form textarea:focus { outline: none; border-color: #1877e0; box-shadow: 0 0 0 4px rgba(24, 119, 224, 0.14); }
+.dd .pd-tab { padding: 16px 8px 13px; font-size: 13px; gap: 7px; }

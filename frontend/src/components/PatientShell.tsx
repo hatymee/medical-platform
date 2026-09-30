@@ -92,6 +92,22 @@ export default function PatientShell({
   const isPatient = roleLabel === "Patient";
 
   useEffect(() => {
+    // Chaque espace n'accepte que son rôle : un autre compte connecté dans ce
+    // navigateur est renvoyé vers son propre espace au lieu de voir une page vide.
+    const expected = home.startsWith("/doctor") ? "doctor" : home === "/admin" ? "clinic_admin" : "patient";
+    const role = localStorage.getItem("medical_role");
+    if (role && role !== expected) {
+      const homes: Record<string, string> = {
+        patient: "/dashboard",
+        doctor: "/doctor/dashboard",
+        secretary: "/secretariat",
+        clinic_admin: "/admin",
+      };
+      router.replace(homes[role] ?? "/connexion");
+    }
+  }, [home, router]);
+
+  useEffect(() => {
     setNow(new Date());
     const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);

@@ -333,6 +333,12 @@ export default function SecretariatDashboard() {
       router.push("/connexion");
       return;
     }
+    const role = typeof window !== "undefined" ? localStorage.getItem("medical_role") : null;
+    if (role && role !== "secretary" && role !== "clinic_admin") {
+      const home: Record<string, string> = { patient: "/dashboard", doctor: "/doctor/dashboard" };
+      router.replace(home[role] ?? "/connexion");
+      return;
+    }
     loadAll();
   }, [loadAll, router]);
 
