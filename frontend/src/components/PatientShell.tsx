@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import {
-  Home, FolderOpen, CalendarDays, Users, TrendingUp, Receipt, LogOut, Bell, ChevronDown, LayoutGrid, Building2, FileText, ShieldCheck, Search, ChevronRight,
+  Home, FolderOpen, CalendarDays, Users, TrendingUp, Receipt, LogOut, Bell, ChevronDown, LayoutGrid, Building2, FileText, ShieldCheck, Search, ChevronRight, Stethoscope, UserRound, Pill,
 } from "lucide-react";
 import "./patient-shell.css";
 
@@ -20,6 +20,9 @@ export const PATIENT_NAV = [
 export const DOCTOR_NAV = [
   { href: "/doctor/dashboard", label: "Accueil" },
   { href: "/doctor/patients", label: "Mes patients" },
+  { href: "/doctor/consultations", label: "Consultations" },
+  { href: "/doctor/ordonnances", label: "Ordonnances" },
+  { href: "/doctor/documents", label: "Documents" },
   { href: "/doctor/tarifs", label: "Mes tarifs" },
   { href: "/professionnel", label: "Facturation" },
 ];
@@ -32,9 +35,16 @@ const NAV_ICONS: Record<string, typeof Home> = {
   "/rendez-vous": CalendarDays,
   "/doctor/dashboard": Home,
   "/doctor/patients": Users,
+  "/doctor/consultations": Stethoscope,
+  "/doctor/ordonnances": Pill,
+  "/doctor/documents": FileText,
   "/doctor/tarifs": Receipt,
   "/professionnel": TrendingUp,
-  "/admin": Building2,
+  "/admin": Home,
+  "/admin#utilisateurs": Users,
+  "/admin#medecins": Stethoscope,
+  "/admin#secretaires": UserRound,
+  "/secretariat": CalendarDays,
 };
 
 export function parseLocal(iso: string) {

@@ -10,7 +10,7 @@ from app.models.models import (
 )
 from app.schemas.schemas import (
     ConsultationCreate, ConsultationOut, PrescriptionCreate, PrescriptionOut,
-)
+) 
 
 router = APIRouter(tags=["clinical"])
 

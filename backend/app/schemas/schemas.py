@@ -12,6 +12,7 @@ class PatientRegister(BaseModel):
     date_of_birth: date
     sex: str | None = None
     blood_group: str = "unknown"
+    phone: str | None = None
 
 
 class DoctorRegister(BaseModel):

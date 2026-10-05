@@ -35,7 +35,7 @@ def register_patient(payload: PatientRegister, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(status_code=400, detail="Cet email est deja utilise")
 
-    user = User(email=payload.email, password_hash=hash_password(payload.password), role=UserRole.patient)
+    user = User(email=payload.email, password_hash=hash_password(payload.password), role=UserRole.patient, phone=payload.phone)
     db.add(user)
     db.flush()
 

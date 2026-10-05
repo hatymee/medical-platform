@@ -4,9 +4,35 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import PatientShell from "@/components/PatientShell";
-import { Plus, Stethoscope, UserRound, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { Plus, Stethoscope, UserRound, ShieldCheck, Users, CalendarDays, Receipt, Activity, UserPlus, CalendarPlus, UserCog, FileText, ArrowRight } from "lucide-react";
 
-const ADMIN_NAV = [{ href: "/admin", label: "Mon cabinet" }];
+const ADMIN_NAV = [
+  { href: "/admin", label: "Accueil" },
+  { href: "/admin#utilisateurs", label: "Utilisateurs" },
+  { href: "/admin#medecins", label: "Médecins" },
+  { href: "/admin#secretaires", label: "Secrétaires" },
+  { href: "/secretariat", label: "Patients et rendez-vous" },
+];
+
+type View = "overview" | "utilisateurs" | "medecins" | "secretaires";
+const viewFromHash = (): View => {
+  if (typeof window === "undefined") return "overview";
+  const h = window.location.hash.replace("#", "");
+  return (["utilisateurs", "medecins", "secretaires"].includes(h) ? h : "overview") as View;
+};
+const STATUS: Record<string, { label: string; tone: string }> = {
+  scheduled: { label: "Programmé", tone: "blue" },
+  confirmed: { label: "Confirmé", tone: "green" },
+  completed: { label: "Terminé", tone: "green" },
+  cancelled: { label: "Annulé", tone: "grey" },
+  no_show: { label: "Absence", tone: "red" },
+};
+const pLocal = (iso: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(String(iso ?? ""));
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0)) : new Date(iso);
+};
+const mad = (v: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "MAD", maximumFractionDigits: 0 }).format(Number(v ?? 0));
 
 type Staff = {
   id: string;
@@ -35,16 +61,34 @@ export default function AdminPage() {
   const [manageForm, setManageForm] = useState({ email: "", password: "" });
   const [manageError, setManageError] = useState("");
   const [manageMsg, setManageMsg] = useState("");
+  const [view, setView] = useState<View>("overview");
+  const [staffQuery, setStaffQuery] = useState("");
+  const [patients, setPatients] = useState<any[]>([]);
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
+
+  useEffect(() => {
+    setView(viewFromHash());
+    const onHash = () => setView(viewFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   const load = useCallback(async () => {
-    const [c, d, s] = await Promise.all([
+    const [c, d, s, p, ap, inv] = await Promise.all([
       api<any>("/clinics/me").catch(() => null),
       api<Staff[]>("/staff/doctors").catch(() => []),
       api<Staff[]>("/secretaries").catch(() => []),
+      api<any[]>("/patients/?status=all").catch(() => []),
+      api<any[]>("/appointments/").catch(() => []),
+      api<any[]>("/billing/invoices").catch(() => []),
     ]);
     setClinic(c);
     setDoctors(d ?? []);
     setSecretaries(s ?? []);
+    setPatients(p ?? []);
+    setAppointments(ap ?? []);
+    setInvoices(inv ?? []);
   }, []);
 
   useEffect(() => {
@@ -149,8 +193,10 @@ export default function AdminPage() {
   const activeCount = [...doctors, ...secretaries].filter((s) => s.is_active).length;
   const initialsOf = (s: Staff) => `${(s.first_name || "?")[0]}${(s.last_name || "")[0] ?? ""}`.toUpperCase();
 
-  const staffTable = (list: Staff[], kind: "doctor" | "secretary") =>
-    list.length === 0 ? (
+  const staffTable = (all: Staff[], kind: "doctor" | "secretary") => {
+    const sq = staffQuery.trim().toLowerCase();
+    const list = sq ? all.filter((s) => `${s.first_name} ${s.last_name} ${s.email}`.toLowerCase().includes(sq)) : all;
+    return list.length === 0 ? (
       <div className="empty">
         {kind === "doctor" ? "Aucun médecin rattaché au cabinet." : "Aucun compte de secrétariat."}
       </div>
@@ -189,10 +235,11 @@ export default function AdminPage() {
         </table>
       </div>
     );
+  };
 
   return (
     <PatientShell
-      active="/admin"
+      active={view === "overview" ? "/admin" : `/admin#${view}`}
       nav={ADMIN_NAV}
       home="/admin"
       roleLabel="Administrateur"
@@ -201,8 +248,11 @@ export default function AdminPage() {
       error={error}
       firstName={clinic?.name ?? "Cabinet"}
       lastName=""
-      title={clinic?.name ?? "Mon cabinet"}
-      subtitle={`${doctors.length} médecin(s) et ${secretaries.length} secrétaire(s) rattachés`}
+      title={view === "overview" ? undefined : view === "medecins" ? "Médecins" : view === "secretaires" ? "Secrétaires" : "Utilisateurs"}
+      subtitle={view === "overview" ? undefined : `${clinic?.name ?? "Cabinet"} : ${doctors.length} médecin(s) et ${secretaries.length} secrétaire(s)`}
+      onSearch={(q) => { window.location.hash = "utilisateurs"; setView("utilisateurs"); setStaffQuery(q); }}
+      searchPlaceholder="Rechercher un utilisateur, un patient, un document…"
+      notifCount={[...doctors, ...secretaries].filter((s) => !s.is_active).length}
     >
       <style jsx>{`
         .kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
@@ -255,6 +305,147 @@ export default function AdminPage() {
         .pill.pill-on { background: #e3f5ea; color: #1a7f4b; }
       `}</style>
 
+      {view === "overview" && (() => {
+        const now = new Date();
+        const y = now.getFullYear(), mo = now.getMonth();
+        const monthStart = new Date(y, mo, 1).getTime();
+        const prevStart = new Date(y, mo - 1, 1).getTime();
+        const daysInMonth = new Date(y, mo + 1, 0).getDate();
+        const ts = (iso: string) => pLocal(iso).getTime();
+        const todayAppts = appointments.filter((a2) => pLocal(a2.scheduled_at).toDateString() === now.toDateString() && a2.status !== "cancelled");
+        const weekAppts = appointments.filter((a2) => { const d = ts(a2.scheduled_at); return d >= Date.now() - 3 * 86400000 && d <= Date.now() + 4 * 86400000; });
+        const invMonth = invoices.filter((i) => ts(i.issued_at) >= monthStart);
+        const invPrev = invoices.filter((i) => { const d = ts(i.issued_at); return d >= prevStart && d < monthStart; });
+        const sumMonth = invMonth.reduce((s2, i) => s2 + Number(i.amount_due ?? 0), 0);
+        const sumPrev = invPrev.reduce((s2, i) => s2 + Number(i.amount_due ?? 0), 0);
+        const invTrend = sumPrev > 0 ? Math.round(((sumMonth - sumPrev) / sumPrev) * 100) : null;
+        const seenMonth = new Set(appointments.filter((a2) => ts(a2.scheduled_at) >= monthStart && a2.status !== "cancelled").map((a2) => a2.patient_id)).size;
+        const activeDoctors = doctors.filter((d) => d.is_active).length;
+
+        const series = (list: any[], key: string, distinct?: string) => Array.from({ length: daysInMonth }, (_, i) => {
+          const items = list.filter((x) => { const d = pLocal(x[key]); return d.getFullYear() === y && d.getMonth() === mo && d.getDate() === i + 1; });
+          return distinct ? new Set(items.map((x) => x[distinct])).size : items.length;
+        });
+        const sPat = series(appointments.filter((a2) => a2.status !== "cancelled"), "scheduled_at", "patient_id");
+        const sRdv = series(appointments, "scheduled_at");
+        const sInv = series(invoices, "issued_at");
+        const maxV = Math.max(1, ...sPat, ...sRdv, ...sInv);
+        const W = 640, H = 200, P = 28;
+        const pts = (s2: number[]) => s2.map((v, i) => `${P + (i * (W - 2 * P)) / Math.max(1, daysInMonth - 1)},${H - P - (v / maxV) * (H - 2 * P)}`).join(" ");
+        const ticks = [0, 0.5, 1].map((f) => Math.round(maxV * f));
+        const smooth = (s2: number[]) => {
+          const xy = pts(s2).split(" ").map((c) => c.split(",").map(Number));
+          return xy.map(([x, y], i) => {
+            if (i === 0) return `M ${x} ${y}`;
+            const [px, py] = xy[i - 1];
+            const mx = (px + x) / 2;
+            return `C ${mx} ${py} ${mx} ${y} ${x} ${y}`;
+          }).join(" ");
+        };
+
+        const roles = [
+          { label: "Patients", n: patients.length, color: "#1877e0" },
+          { label: "Médecins", n: doctors.length, color: "#34c38f" },
+          { label: "Secrétaires", n: secretaries.length, color: "#8b6cf0" },
+          { label: "Admins", n: 1, color: "#f59e3d" },
+        ];
+        const totalUsers = roles.reduce((s2, r) => s2 + r.n, 0);
+        let acc = 0;
+        const donut = roles.filter((r) => r.n > 0).map((r) => { const f = (acc / totalUsers) * 360; acc += r.n; return `${r.color} ${f}deg ${(acc / totalUsers) * 360}deg`; }).join(", ");
+
+        const pName = (id: string) => { const p = patients.find((x) => x.id === id); return p ? `${p.first_name} ${p.last_name}` : "Patient"; };
+        const dName = (id: string) => { const d = doctors.find((x: any) => x.id === id); return d ? `Dr. ${d.first_name} ${d.last_name}` : "Médecin"; };
+        const recent = [...appointments].sort((p1, p2) => ts(p2.scheduled_at) - ts(p1.scheduled_at)).slice(0, 5);
+
+        return (
+          <div className="pd dd">
+            <div className="dd-hello-row">
+              <div>
+                <h1 className="pd-name pd-hello">Tableau de bord</h1>
+                <p className="pd-sub" style={{ fontSize: 14 }}>Vue d&apos;ensemble de votre plateforme MedLink{clinic?.name ? `, ${clinic.name}` : ""}.</p>
+              </div>
+              <span className="ad-period"><CalendarDays size={15} /> {now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}</span>
+            </div>
+
+            <div className="dd-stats" style={{ marginBottom: 18 }}>
+              <div className="dd-stat"><span className="dd-stat-ic blue"><Users size={20} /></span><span className="dd-stat-body"><span className="dd-stat-k">Total patients</span><b>{patients.length}</b><em>{seenMonth} vu{seenMonth > 1 ? "s" : ""} ce mois</em></span></div>
+              <div className="dd-stat"><span className="dd-stat-ic green"><Stethoscope size={20} /></span><span className="dd-stat-body"><span className="dd-stat-k">Médecins</span><b>{doctors.length}</b><em>{activeDoctors} actif{activeDoctors > 1 ? "s" : ""}</em></span></div>
+              <div className="dd-stat"><span className="dd-stat-ic violet"><CalendarDays size={20} /></span><span className="dd-stat-body"><span className="dd-stat-k">Rendez-vous aujourd&apos;hui</span><b>{todayAppts.length}</b><em>{weekAppts.length} cette semaine</em></span></div>
+              <div className="dd-stat"><span className="dd-stat-ic orange"><Receipt size={20} /></span><span className="dd-stat-body"><span className="dd-stat-k">Factures du mois</span><b>{mad(sumMonth)}</b><em className={invTrend !== null && invTrend < 0 ? "dd-warn" : ""}>{invTrend === null ? `${invMonth.length} facture(s)` : `${invTrend >= 0 ? "+" : ""}${invTrend} % vs mois dernier`}</em></span></div>
+            </div>
+
+            <div className="dd-grid">
+              <section className="pd-card pd-sec">
+                <div className="pd-sec-head">
+                  <h2><Activity size={20} /> Activité de la plateforme</h2>
+                  <div className="fx-legend">
+                    <span><i style={{ background: "#1877e0" }} /> Patients</span>
+                    <span><i style={{ background: "#34c38f" }} /> Rendez-vous</span>
+                    <span><i style={{ background: "#f59e3d" }} /> Factures</span>
+                  </div>
+                </div>
+                <svg viewBox={`0 0 ${W} ${H}`} className="ad-chart" role="img" aria-label="Activité quotidienne du mois">
+                  {ticks.map((v) => { const yy = H - P - (v / maxV) * (H - 2 * P); return (<g key={v}><line x1={P} x2={W - P} y1={yy} y2={yy} stroke="#e1eaf3" /><text x={4} y={yy + 4} fontSize="10" fill="#8aa0b8">{v}</text></g>); })}
+                  {[1, 5, 10, 15, 20, 25, daysInMonth].map((d) => (<text key={d} x={P + ((d - 1) * (W - 2 * P)) / Math.max(1, daysInMonth - 1)} y={H - 8} fontSize="10" fill="#8aa0b8" textAnchor="middle">{d}</text>))}
+                  <path d={smooth(sInv)} fill="none" stroke="#f59e3d" strokeWidth="2" strokeLinecap="round" />
+                  <path d={smooth(sRdv)} fill="none" stroke="#34c38f" strokeWidth="2" strokeLinecap="round" />
+                  <path d={smooth(sPat)} fill="none" stroke="#1877e0" strokeWidth="2.5" strokeLinecap="round" />
+                </svg>
+              </section>
+
+              <section className="pd-card pd-sec">
+                <div className="pd-sec-head"><h2><Users size={20} /> Répartition des utilisateurs</h2></div>
+                <div className="pd-donut-wrap">
+                  <div className="pd-donut dd-donut" style={{ background: `conic-gradient(${donut})` }}>
+                    <div className="pd-donut-hole dd-donut-hole"><b>{totalUsers}</b><span>Total</span></div>
+                  </div>
+                  <ul className="pd-legend">
+                    {roles.map((r) => (
+                      <li key={r.label}><i style={{ background: r.color }} /><span style={{ flexGrow: 1 }}>{r.label}</span><b>{Math.round((r.n / totalUsers) * 100)}%</b></li>
+                    ))}
+                  </ul>
+                </div>
+              </section>
+
+              <section className="pd-card pd-sec">
+                <div className="pd-sec-head">
+                  <h2><CalendarDays size={20} /> Rendez-vous récents</h2>
+                  <Link className="pd-link" href="/secretariat">Voir tous <ArrowRight size={14} /></Link>
+                </div>
+                {recent.length === 0 ? <div className="pd-empty">Aucun rendez-vous pour le moment.</div> : (
+                  <div className="pd-scroll">
+                    <table className="pd-table">
+                      <thead><tr><th>Date &amp; Heure</th><th>Patient</th><th>Médecin</th><th>Statut</th></tr></thead>
+                      <tbody>
+                        {recent.map((r) => { const s2 = STATUS[r.status] ?? { label: r.status, tone: "grey" }; return (
+                          <tr key={r.id}>
+                            <td className="pd-nowrap">{pLocal(r.scheduled_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} {pLocal(r.scheduled_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</td>
+                            <td className="pd-strong">{pName(r.patient_id)}</td>
+                            <td>{dName(r.doctor_id)}</td>
+                            <td><span className={`pd-pill ${s2.tone}`}>{s2.label}</span></td>
+                          </tr>
+                        ); })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+
+              <section className="pd-card pd-sec">
+                <div className="pd-sec-head"><h2><ArrowRight size={20} /> Actions rapides</h2></div>
+                <div className="pd-quick">
+                  <button onClick={() => { setOpen("doctor"); setFormError(""); }}><span className="pd-ic blue"><UserPlus size={20} /></span>Ajouter un médecin</button>
+                  <button onClick={() => { setOpen("secretary"); setFormError(""); }}><span className="pd-ic violet"><UserPlus size={20} /></span>Ajouter une secrétaire</button>
+                  <Link href="/admin#utilisateurs"><span className="pd-ic green"><UserCog size={20} /></span>Gérer les utilisateurs</Link>
+                  <Link href="/secretariat"><span className="pd-ic orange"><FileText size={20} /></span>Patients, rendez-vous et factures</Link>
+                </div>
+              </section>
+            </div>
+          </div>
+        );
+      })()}
+
+      {view !== "overview" && (<>
       <div className="kpis">
         <div className="kpi">
           <span className="kpi-ic blue"><Stethoscope size={22} /></span>
@@ -270,7 +461,7 @@ export default function AdminPage() {
         </div>
       </div>
 
-      <div className="card">
+      {view !== "secretaires" && (<div className="card">
         <div className="head">
           <h2><Stethoscope size={20} color="#1877e0" /> Médecins</h2>
           <button className="btn primary sm" onClick={() => { setOpen("doctor"); setFormError(""); }}>
@@ -278,9 +469,9 @@ export default function AdminPage() {
           </button>
         </div>
         {staffTable(doctors, "doctor")}
-      </div>
+      </div>)}
 
-      <div className="card">
+      {view !== "medecins" && (<div className="card">
         <div className="head">
           <h2><UserRound size={20} color="#1877e0" /> Secrétariat</h2>
           <button className="btn primary sm" onClick={() => { setOpen("secretary"); setFormError(""); }}>
@@ -288,7 +479,8 @@ export default function AdminPage() {
           </button>
         </div>
         {staffTable(secretaries, "secretary")}
-      </div>
+      </div>)}
+      </>)}
 
       {open && (
         <div className="overlay" onClick={() => setOpen(null)}>

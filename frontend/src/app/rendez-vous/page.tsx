@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  CalendarDays, CalendarPlus, Clock, Stethoscope, Info, X, ChevronRight, CircleCheck, History, CircleX, ShieldCheck,
+  CalendarDays, CalendarPlus, Clock, Stethoscope, Info, X, ChevronRight, CircleCheck, History, CircleX, ShieldCheck, Ban,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import PatientShell, { parseLocal, clock } from "@/components/PatientShell";
@@ -39,6 +39,8 @@ export default function RendezVousPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("upcoming");
   const [detail, setDetail] = useState<any>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState("");
   const [booked, setBooked] = useState("");
 
   const [open, setOpen] = useState(false);
@@ -57,6 +59,22 @@ export default function RendezVousPage() {
     const list = await api<any[]>("/appointments/mine").catch(() => []);
     setAppointments(list ?? []);
   }, []);
+
+  async function cancelAppointment(a: any) {
+    if (!confirm("Voulez-vous vraiment annuler ce rendez-vous ?")) return;
+    setCancelling(true);
+    setCancelError("");
+    try {
+      await api(`/appointments/${a.id}/cancel`, { method: "PATCH" });
+      setDetail(null);
+      setFilter("cancelled");
+      await load();
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : "Annulation impossible.");
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   useEffect(() => {
     if (!localStorage.getItem("medical_token")) {
@@ -282,7 +300,7 @@ export default function RendezVousPage() {
                       <thead><tr><th>Date &amp; Heure</th><th>Motif</th><th>Médecin</th><th>Statut</th><th className="pd-right">Actions</th></tr></thead>
                       <tbody>
                         {list.map((a) => (
-                          <tr key={a.id} className="pd-click" onClick={() => setDetail(a)}>
+                          <tr key={a.id} className="pd-click" onClick={() => { setDetail(a); setCancelError(""); }}>
                             <td>
                               <div className="pd-docname">
                                 <div className="pd-datebox pd-datebox-sm">
@@ -302,7 +320,7 @@ export default function RendezVousPage() {
                             </td>
                             <td>{pill(a.status)}</td>
                             <td className="pd-right">
-                              <button className="pd-btn pd-btn-ghost pd-btn-sm" onClick={(e) => { e.stopPropagation(); setDetail(a); }}>Voir le détail</button>
+                              <button className="pd-btn pd-btn-ghost pd-btn-sm" onClick={(e) => { e.stopPropagation(); setDetail(a); setCancelError(""); }}>Voir le détail</button>
                             </td>
                           </tr>
                         ))}
@@ -382,8 +400,18 @@ export default function RendezVousPage() {
                 <div><dt>Heure</dt><dd>{clock(String(detail.scheduled_at))}</dd></div>
               </div>
             </dl>
-            <div className="pd-note"><Info size={16} /> Pour annuler ou déplacer ce rendez-vous, contactez le secrétariat du cabinet.</div>
-            <div className="pd-modal-actions">
+            {when(detail) >= now && detail.status !== "cancelled" ? (
+              <div className="pd-note"><Info size={16} /> Pour déplacer ce rendez-vous, contactez le secrétariat du cabinet. Vous pouvez l&apos;annuler directement ci-dessous.</div>
+            ) : (
+              <div className="pd-note"><Info size={16} /> Pour toute question sur ce rendez-vous, contactez le secrétariat du cabinet.</div>
+            )}
+            {cancelError && <p className="pd-err">{cancelError}</p>}
+            <div className="pd-modal-actions pd-modal-actions-split">
+              {when(detail) >= now && detail.status !== "cancelled" && (
+                <button className="pd-btn pd-btn-danger" disabled={cancelling} onClick={() => cancelAppointment(detail)}>
+                  <Ban size={15} /> {cancelling ? "Annulation…" : "Annuler le rendez-vous"}
+                </button>
+              )}
               <button className="pd-btn pd-btn-ghost" onClick={() => setDetail(null)}>Fermer</button>
             </div>
           </div>
