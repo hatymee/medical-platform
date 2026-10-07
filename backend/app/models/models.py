@@ -270,3 +270,26 @@ class Procedure(Base):
     label: Mapped[str] = mapped_column(String(255))
     price: Mapped[float] = mapped_column(Numeric(10, 2))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+class NotificationType(str, enum.Enum):
+    appointment_created = "appointment_created"
+    appointment_confirmed = "appointment_confirmed"
+    appointment_cancelled = "appointment_cancelled"
+    appointment_rescheduled = "appointment_rescheduled"
+    document_added = "document_added"
+    invoice_created = "invoice_created"
+    invoice_paid = "invoice_paid"
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=False)
+    type: Mapped[NotificationType] = mapped_column(Enum(NotificationType), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    message: Mapped[str | None] = mapped_column(Text)
+    link: Mapped[str | None] = mapped_column(String(255))
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+

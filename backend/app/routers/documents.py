@@ -7,8 +7,10 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import require_role, get_current_user
 from app.models.models import (
-    User, Doctor, MedicalDocument, RecordAccessGrant, AccessStatus, AccessLog, DocumentCategory,
+    User, Doctor, Patient, MedicalDocument, RecordAccessGrant, AccessStatus, AccessLog, DocumentCategory,
+    NotificationType,
 )
+from app.core.notify import notify
 from app.schemas.schemas import MedicalDocumentOut
 from app.core.storage import upload_file
 
@@ -131,6 +133,17 @@ async def upload_document(
         document_date=document_date,
     )
     db.add(doc)
+
+    if current_user.role != "patient":
+        patient_row = db.get(Patient, patient_id)
+        if patient_row:
+            notify(
+                db, patient_row.user_id, NotificationType.document_added,
+                "Nouveau document",
+                f"Un document « {title} » a été ajouté à votre dossier.",
+                link="/dossier#documents",
+            )
+
     db.commit()
     db.refresh(doc)
     return doc

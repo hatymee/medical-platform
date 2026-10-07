@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import require_role
-from app.models.models import User, Doctor, Appointment, AppointmentStatus
+from app.models.models import User, Doctor, Patient, Appointment, AppointmentStatus, NotificationType
+from app.core.notify import notify
 from app.schemas.schemas import (
     AppointmentCreate,
     AppointmentOut,
@@ -73,6 +74,15 @@ def create_appointment(
         status=AppointmentStatus.scheduled,
     )
     db.add(appointment)
+    notify(
+        db,
+        doctor.user_id,
+        NotificationType.appointment_created,
+        "Nouveau rendez-vous",
+        f"{current_user.patient.first_name} {current_user.patient.last_name} a pris rendez-vous "
+        f"le {payload.scheduled_at:%d/%m/%Y à %H:%M}.",
+        link="/doctor/dashboard",
+    )
     db.commit()
     db.refresh(appointment)
     return appointment
@@ -105,6 +115,17 @@ def create_appointment_for_patient(
         status=AppointmentStatus.scheduled,
     )
     db.add(appointment)
+    target_patient = db.get(Patient, payload.patient_id)
+    if target_patient:
+        notify(
+            db,
+            target_patient.user_id,
+            NotificationType.appointment_created,
+            "Rendez-vous programmé",
+            f"Un rendez-vous a été programmé le {payload.scheduled_at:%d/%m/%Y à %H:%M} "
+            f"avec Dr. {doctor.first_name} {doctor.last_name}.",
+            link="/rendez-vous",
+        )
     db.commit()
     db.refresh(appointment)
     return appointment
@@ -147,6 +168,26 @@ def cancel_appointment(
             raise HTTPException(status_code=403, detail="Ce rendez-vous ne vous appartient pas.")
 
     appointment.status = AppointmentStatus.cancelled
+
+    patient_row = db.get(Patient, appointment.patient_id)
+    doctor_row = db.get(Doctor, appointment.doctor_id)
+    when = f"{appointment.scheduled_at:%d/%m/%Y à %H:%M}"
+    if current_user.role == "patient" and doctor_row:
+        notify(
+            db, doctor_row.user_id, NotificationType.appointment_cancelled,
+            "Rendez-vous annulé",
+            f"{current_user.patient.first_name} {current_user.patient.last_name} "
+            f"a annulé son rendez-vous du {when}.",
+            link="/doctor/dashboard",
+        )
+    elif patient_row:
+        notify(
+            db, patient_row.user_id, NotificationType.appointment_cancelled,
+            "Rendez-vous annulé",
+            f"Votre rendez-vous du {when} a été annulé.",
+            link="/rendez-vous",
+        )
+
     db.commit()
     db.refresh(appointment)
     return appointment
@@ -172,6 +213,15 @@ def update_appointment(
         appointment.status = payload.status
     if payload.reason is not None:
         appointment.reason = payload.reason
+
+    patient_row = db.get(Patient, appointment.patient_id)
+    if patient_row:
+        notify(
+            db, patient_row.user_id, NotificationType.appointment_rescheduled,
+            "Rendez-vous modifié",
+            f"Votre rendez-vous a été reprogrammé au {appointment.scheduled_at:%d/%m/%Y à %H:%M}.",
+            link="/rendez-vous",
+        )
 
     db.commit()
     db.refresh(appointment)

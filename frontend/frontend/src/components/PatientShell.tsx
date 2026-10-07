@@ -1,0 +1,399 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import type { ReactNode } from "react";
+import { api } from "@/lib/api";
+import {
+  Home, FolderOpen, CalendarDays, Users, TrendingUp, Receipt, LogOut, Bell, ChevronDown, LayoutGrid, Building2, FileText, ShieldCheck, Search, ChevronRight, Stethoscope, UserRound, Pill,
+  Check, Inbox, CalendarX,
+} from "lucide-react";
+import "./patient-shell.css";
+
+export const PATIENT_NAV = [
+  { href: "/dashboard", label: "Accueil" },
+  { href: "/dossier", label: "Mon dossier" },
+  { href: "/rendez-vous", label: "Rendez-vous" },
+  { href: "/dossier#documents", label: "Mes documents" },
+  { href: "/dossier#factures", label: "Mes factures" },
+];
+
+export const DOCTOR_NAV = [
+  { href: "/doctor/dashboard", label: "Accueil" },
+  { href: "/doctor/patients", label: "Mes patients" },
+  { href: "/doctor/consultations", label: "Consultations" },
+  { href: "/doctor/ordonnances", label: "Ordonnances" },
+  { href: "/doctor/documents", label: "Documents" },
+  { href: "/doctor/tarifs", label: "Mes tarifs" },
+  { href: "/professionnel", label: "Facturation" },
+];
+
+const NAV_ICONS: Record<string, typeof Home> = {
+  "/dashboard": Home,
+  "/dossier": FolderOpen,
+  "/dossier#documents": FileText,
+  "/dossier#factures": Receipt,
+  "/rendez-vous": CalendarDays,
+  "/doctor/dashboard": Home,
+  "/doctor/patients": Users,
+  "/doctor/consultations": Stethoscope,
+  "/doctor/ordonnances": Pill,
+  "/doctor/documents": FileText,
+  "/doctor/tarifs": Receipt,
+  "/professionnel": TrendingUp,
+  "/admin": Home,
+  "/admin#utilisateurs": Users,
+  "/admin#medecins": Stethoscope,
+  "/admin#secretaires": UserRound,
+  "/secretariat": CalendarDays,
+};
+
+export function parseLocal(iso: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(iso);
+  if (!m) return new Date(iso);
+  return new Date(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0);
+}
+
+export function longDate(iso: string) {
+  return parseLocal(iso).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+}
+
+export function clock(iso: string) {
+  return parseLocal(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+}
+
+type AppNotification = {
+  id: string;
+  type: string;
+  title: string;
+  message: string | null;
+  link: string | null;
+  is_read: boolean;
+  created_at: string;
+};
+
+const NOTIF_ICON: Record<string, typeof Bell> = {
+  appointment_created: CalendarDays,
+  appointment_confirmed: CalendarDays,
+  appointment_cancelled: CalendarX,
+  appointment_rescheduled: CalendarDays,
+  document_added: FileText,
+  invoice_created: Receipt,
+  invoice_paid: Receipt,
+};
+
+function timeAgo(iso: string) {
+  const d = parseLocal(iso);
+  const diffMin = Math.max(0, Math.round((Date.now() - d.getTime()) / 60000));
+  if (diffMin < 1) return "à l'instant";
+  if (diffMin < 60) return `il y a ${diffMin} min`;
+  const diffH = Math.round(diffMin / 60);
+  if (diffH < 24) return `il y a ${diffH} h`;
+  const diffJ = Math.round(diffH / 24);
+  if (diffJ < 7) return `il y a ${diffJ} j`;
+  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
+
+export default function PatientShell({
+  active,
+  nav = PATIENT_NAV,
+  home = "/dashboard",
+  roleLabel = "Patient",
+  eyebrow,
+  title,
+  subtitle,
+  action,
+  firstName,
+  lastName,
+  status,
+  error,
+  children,
+  onSearch,
+  searchPlaceholder = "Rechercher…",
+  notifCount = 0,
+}: {
+  active: string;
+  nav?: { href: string; label: string }[];
+  home?: string;
+  roleLabel?: string;
+  eyebrow?: string;
+  title?: ReactNode;
+  subtitle?: ReactNode;
+  action?: ReactNode;
+  firstName?: string;
+  lastName?: string;
+  status: "loading" | "error" | "ready";
+  error?: string;
+  children?: ReactNode;
+  onSearch?: (query: string) => void;
+  searchPlaceholder?: string;
+  notifCount?: number;
+}) {
+  const router = useRouter();
+  const [now, setNow] = useState<Date | null>(null);
+  const [query, setQuery] = useState("");
+  const isPatient = roleLabel === "Patient";
+  const [unread, setUnread] = useState(0);
+  const [notifs, setNotifs] = useState<AppNotification[] | null>(null);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const bellRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Chaque espace n'accepte que son rôle : un autre compte connecté dans ce
+    // navigateur est renvoyé vers son propre espace au lieu de voir une page vide.
+    const expected = home.startsWith("/doctor") ? "doctor" : home === "/admin" ? "clinic_admin" : "patient";
+    const role = localStorage.getItem("medical_role");
+    if (role && role !== expected) {
+      const homes: Record<string, string> = {
+        patient: "/dashboard",
+        doctor: "/doctor/dashboard",
+        secretary: "/secretariat",
+        clinic_admin: "/admin",
+      };
+      router.replace(homes[role] ?? "/connexion");
+    }
+  }, [home, router]);
+
+  useEffect(() => {
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (status !== "ready") return;
+    let cancelled = false;
+    const loadCount = () => {
+      api<{ count: number }>("/notifications/unread-count")
+        .then((r) => { if (!cancelled) setUnread(r.count); })
+        .catch(() => {});
+    };
+    loadCount();
+    const id = setInterval(loadCount, 30_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [status]);
+
+  useEffect(() => {
+    if (!notifOpen) return;
+    function onClickOutside(e: MouseEvent) {
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) setNotifOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [notifOpen]);
+
+  function toggleNotifications() {
+    const next = !notifOpen;
+    setNotifOpen(next);
+    if (next) {
+      api<AppNotification[]>("/notifications/mine?limit=10")
+        .then(setNotifs)
+        .catch(() => setNotifs([]));
+    }
+  }
+
+  function openNotification(n: AppNotification) {
+    if (!n.is_read) {
+      api(`/notifications/${n.id}/read`, { method: "PATCH" }).catch(() => {});
+      setUnread((u) => Math.max(0, u - 1));
+      setNotifs((list) => list?.map((x) => (x.id === n.id ? { ...x, is_read: true } : x)) ?? list);
+    }
+    setNotifOpen(false);
+    if (n.link) router.push(n.link);
+  }
+
+  function markAllRead() {
+    api("/notifications/read-all", { method: "POST" }).catch(() => {});
+    setUnread(0);
+    setNotifs((list) => list?.map((x) => ({ ...x, is_read: true })) ?? list);
+  }
+
+  function logout() {
+    localStorage.clear();
+    router.push("/connexion");
+  }
+
+  const initials = `${firstName?.[0] ?? ""}${lastName?.[0] ?? ""}`.toUpperCase() || "?";
+  const day = now ? now.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "";
+  const time = now ? now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
+  const tag = eyebrow ? eyebrow.charAt(0) + eyebrow.slice(1).toLowerCase() : roleLabel;
+
+  if (status === "error") {
+    return (
+      <div className="ml-root">
+        <div className="ml-state">
+          <h1>Accès impossible</h1>
+          {error && <p className="ml-why">{error}</p>}
+          <p>
+            Votre session a peut-être expiré, ou votre compte n&apos;a pas les droits nécessaires.
+            Reconnectez-vous pour continuer.
+          </p>
+          <div className="ml-actions">
+            <button className="ml-btn ml-btn-primary" onClick={logout}>Se reconnecter</button>
+            <button className="ml-btn ml-btn-ghost" onClick={() => window.location.reload()}>Réessayer</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "loading") {
+    return (
+      <div className="ml-root">
+        <div className="ml-state">
+          <div className="ml-pulse" />
+          <p>Chargement en cours…</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ml-root">
+      <div className="ml-shell">
+        <aside className="ml-rail">
+          <Link className="ml-brand" href={home}>
+            <span className="ml-logo">+</span>
+            <span>
+              <span className="ml-brand-name">Med<em>Link</em></span>
+              <span className="ml-brand-tag">Votre santé, notre priorité</span>
+            </span>
+          </Link>
+
+          <nav className="ml-menu">
+            {nav.map((l) => {
+              const Icon = NAV_ICONS[l.href] ?? LayoutGrid;
+              return (
+                <Link key={l.href} href={l.href} className={l.href === active ? "ml-on" : ""}>
+                  <Icon size={20} />
+                  <span>{l.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          {isPatient ? (
+            <div className="ml-promo">
+              <div className="ml-promo-head"><ShieldCheck size={24} className="ml-promo-shield" /> Votre santé en sécurité</div>
+              <p>Vos données sont protégées et uniquement accessibles aux professionnels autorisés.</p>
+            </div>
+          ) : (
+            <div className="ml-promo-space" />
+          )}
+
+          <div className="ml-foot">
+            <div className="ml-me">
+              <div className="ml-avatar">{initials}</div>
+              <div style={{ minWidth: 0, flexGrow: 1 }}>
+                <div className="ml-me-name">{firstName} {lastName}</div>
+                <div className="ml-me-role">{roleLabel}</div>
+              </div>
+              <ChevronRight size={16} />
+            </div>
+            <button className="ml-logout" onClick={logout}>
+              <LogOut size={18} /> Déconnexion
+            </button>
+          </div>
+        </aside>
+
+        <div className="ml-main">
+          <header className="ml-top">
+            {onSearch ? (
+              <form
+                className="ml-search"
+                role="search"
+                onSubmit={(e) => { e.preventDefault(); onSearch(query.trim()); }}
+              >
+                <Search size={18} />
+                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} />
+              </form>
+            ) : (
+              <div className="ml-top-tag">{tag}</div>
+            )}
+            <div className="ml-top-right">
+              <div className="ml-notif" ref={bellRef}>
+                <button
+                  type="button"
+                  className="ml-bell"
+                  aria-label={`${unread} notification(s) non lue(s)`}
+                  aria-expanded={notifOpen}
+                  onClick={toggleNotifications}
+                >
+                  <Bell size={21} />
+                  {unread > 0 && <span className="ml-bell-badge">{unread > 9 ? "9+" : unread}</span>}
+                </button>
+                {notifOpen && (
+                  <div className="ml-notif-panel" role="menu">
+                    <div className="ml-notif-head">
+                      <span>Notifications</span>
+                      {notifs && notifs.some((n) => !n.is_read) && (
+                        <button type="button" className="ml-notif-readall" onClick={markAllRead}>
+                          <Check size={13} /> Tout marquer comme lu
+                        </button>
+                      )}
+                    </div>
+                    <div className="ml-notif-list">
+                      {notifs === null ? (
+                        <div className="ml-notif-empty">Chargement…</div>
+                      ) : notifs.length === 0 ? (
+                        <div className="ml-notif-empty">
+                          <Inbox size={22} />
+                          <span>Aucune notification pour le moment.</span>
+                        </div>
+                      ) : (
+                        notifs.map((n) => {
+                          const Icon = NOTIF_ICON[n.type] ?? Bell;
+                          return (
+                            <button
+                              type="button"
+                              key={n.id}
+                              className={`ml-notif-item ${n.is_read ? "" : "unread"}`}
+                              onClick={() => openNotification(n)}
+                            >
+                              <span className="ml-notif-ic"><Icon size={16} /></span>
+                              <span className="ml-notif-body">
+                                <span className="ml-notif-title">{n.title}</span>
+                                {n.message && <span className="ml-notif-msg">{n.message}</span>}
+                                <span className="ml-notif-time">{timeAgo(n.created_at)}</span>
+                              </span>
+                              {!n.is_read && <span className="ml-notif-dot" />}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <span className="ml-top-sep" />
+              <div className="ml-top-date">
+                <span>{day.charAt(0).toUpperCase() + day.slice(1)}</span>
+                <b>{time}</b>
+              </div>
+              <div className="ml-top-me">
+                <span className="ml-avatar">{initials}</span>
+                <ChevronDown size={16} />
+              </div>
+            </div>
+          </header>
+
+          {(title || subtitle || action) && (
+            <div className="ml-band">
+              <div className="ml-inner ml-head">
+                <div>
+                  <h1 className="ml-title">{title}</h1>
+                  {subtitle && <p className="ml-sub">{subtitle}</p>}
+                </div>
+                {action}
+              </div>
+            </div>
+          )}
+          <div className="ml-body">
+            <div className="ml-inner">{children}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

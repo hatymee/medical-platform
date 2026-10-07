@@ -1,4 +1,4 @@
-﻿from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import require_role
-from app.models.models import Doctor, Invoice, InvoiceStatus, Payment, User, RecordAccessGrant, AccessStatus
+from app.models.models import Doctor, Invoice, InvoiceStatus, Payment, User, Patient, RecordAccessGrant, AccessStatus, NotificationType
+from app.core.notify import notify
 from app.schemas.schemas import InvoiceCreate, InvoiceOut, PaymentCreate, PaymentOut, RevenueSummary
 
 router = APIRouter(prefix="/billing", tags=["billing"])
@@ -62,6 +63,16 @@ def create_invoice(payload: InvoiceCreate, db: Session = Depends(get_db), curren
         amount_due=payload.amount_due,
     )
     db.add(invoice)
+
+    patient_row = db.get(Patient, payload.patient_id)
+    if patient_row:
+        notify(
+            db, patient_row.user_id, NotificationType.invoice_created,
+            "Nouvelle facture",
+            f"Une facture de {payload.amount_due} MAD a été émise : {payload.description}.",
+            link="/dossier#factures",
+        )
+
     db.commit()
     db.refresh(invoice)
     return _invoice_out(invoice, db)
@@ -85,6 +96,17 @@ def record_payment(invoice_id: str, payload: PaymentCreate, db: Session = Depend
     db.add(payment); db.flush()
     total = Decimal(str(paid or 0)) + Decimal(str(payload.amount))
     invoice.status = InvoiceStatus.paid if total >= Decimal(str(invoice.amount_due)) else InvoiceStatus.partial
+
+    if invoice.status == InvoiceStatus.paid:
+        patient_row = db.get(Patient, invoice.patient_id)
+        if patient_row:
+            notify(
+                db, patient_row.user_id, NotificationType.invoice_paid,
+                "Facture réglée",
+                f"Votre facture « {invoice.description} » a été réglée.",
+                link="/dossier#factures",
+            )
+
     db.commit(); db.refresh(payment)
     return payment
 
