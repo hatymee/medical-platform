@@ -333,12 +333,6 @@ export default function SecretariatDashboard() {
       router.push("/connexion");
       return;
     }
-    const role = typeof window !== "undefined" ? localStorage.getItem("medical_role") : null;
-    if (role && role !== "secretary" && role !== "clinic_admin") {
-      const home: Record<string, string> = { patient: "/dashboard", doctor: "/doctor/dashboard" };
-      router.replace(home[role] ?? "/connexion");
-      return;
-    }
     loadAll();
   }, [loadAll, router]);
 
@@ -1089,6 +1083,13 @@ export default function SecretariatDashboard() {
           }}
           onAlerts={() => { setActiveTab("alerts"); setOpenPatientId(null); }}
           onProfile={() => { setActiveTab("settings"); setOpenPatientId(null); setSettingsMsg(null); }}
+          onNavigate={(tab) => {
+            const known: TabType[] = ["dashboard", "rdv", "patients", "doctors", "archives", "billing", "alerts", "settings"];
+            if ((known as string[]).includes(tab)) {
+              setActiveTab(tab as TabType);
+              setOpenPatientId(null);
+            }
+          }}
         />
 
         {!(activeTab === "patients" && openPatient) && (

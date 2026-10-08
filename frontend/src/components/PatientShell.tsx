@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { api } from "@/lib/api";
 import {
   Home, FolderOpen, CalendarDays, Users, TrendingUp, Receipt, LogOut, Bell, ChevronDown, LayoutGrid, Building2, FileText, ShieldCheck, Search, ChevronRight, Stethoscope, UserRound, Pill,
+  Check, Inbox, CalendarX,
 } from "lucide-react";
 import "./patient-shell.css";
 
@@ -61,6 +63,38 @@ export function clock(iso: string) {
   return parseLocal(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 }
 
+type AppNotification = {
+  id: string;
+  type: string;
+  title: string;
+  message: string | null;
+  link: string | null;
+  is_read: boolean;
+  created_at: string;
+};
+
+const NOTIF_ICON: Record<string, typeof Bell> = {
+  appointment_created: CalendarDays,
+  appointment_confirmed: CalendarDays,
+  appointment_cancelled: CalendarX,
+  appointment_rescheduled: CalendarDays,
+  document_added: FileText,
+  invoice_created: Receipt,
+  invoice_paid: Receipt,
+};
+
+function timeAgo(iso: string) {
+  const d = parseLocal(iso);
+  const diffMin = Math.max(0, Math.round((Date.now() - d.getTime()) / 60000));
+  if (diffMin < 1) return "à l'instant";
+  if (diffMin < 60) return `il y a ${diffMin} min`;
+  const diffH = Math.round(diffMin / 60);
+  if (diffH < 24) return `il y a ${diffH} h`;
+  const diffJ = Math.round(diffH / 24);
+  if (diffJ < 7) return `il y a ${diffJ} j`;
+  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
+
 export default function PatientShell({
   active,
   nav = PATIENT_NAV,
@@ -100,6 +134,10 @@ export default function PatientShell({
   const [now, setNow] = useState<Date | null>(null);
   const [query, setQuery] = useState("");
   const isPatient = roleLabel === "Patient";
+  const [unread, setUnread] = useState(0);
+  const [notifs, setNotifs] = useState<AppNotification[] | null>(null);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const bellRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Chaque espace n'accepte que son rôle : un autre compte connecté dans ce
@@ -122,6 +160,54 @@ export default function PatientShell({
     const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (status !== "ready") return;
+    let cancelled = false;
+    const loadCount = () => {
+      api<{ count: number }>("/notifications/unread-count")
+        .then((r) => { if (!cancelled) setUnread(r.count); })
+        .catch(() => {});
+    };
+    loadCount();
+    const id = setInterval(loadCount, 30_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [status]);
+
+  useEffect(() => {
+    if (!notifOpen) return;
+    function onClickOutside(e: MouseEvent) {
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) setNotifOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [notifOpen]);
+
+  function toggleNotifications() {
+    const next = !notifOpen;
+    setNotifOpen(next);
+    if (next) {
+      api<AppNotification[]>("/notifications/mine?limit=10")
+        .then(setNotifs)
+        .catch(() => setNotifs([]));
+    }
+  }
+
+  function openNotification(n: AppNotification) {
+    if (!n.is_read) {
+      api(`/notifications/${n.id}/read`, { method: "PATCH" }).catch(() => {});
+      setUnread((u) => Math.max(0, u - 1));
+      setNotifs((list) => list?.map((x) => (x.id === n.id ? { ...x, is_read: true } : x)) ?? list);
+    }
+    setNotifOpen(false);
+    if (n.link) router.push(n.link);
+  }
+
+  function markAllRead() {
+    api("/notifications/read-all", { method: "POST" }).catch(() => {});
+    setUnread(0);
+    setNotifs((list) => list?.map((x) => ({ ...x, is_read: true })) ?? list);
+  }
 
   function logout() {
     localStorage.clear();
@@ -226,10 +312,60 @@ export default function PatientShell({
               <div className="ml-top-tag">{tag}</div>
             )}
             <div className="ml-top-right">
-              <span className="ml-bell" aria-label={`${notifCount} notification(s)`}>
-                <Bell size={21} />
-                {notifCount > 0 && <span className="ml-bell-badge">{notifCount > 9 ? "9+" : notifCount}</span>}
-              </span>
+              <div className="ml-notif" ref={bellRef}>
+                <button
+                  type="button"
+                  className="ml-bell"
+                  aria-label={`${unread} notification(s) non lue(s)`}
+                  aria-expanded={notifOpen}
+                  onClick={toggleNotifications}
+                >
+                  <Bell size={21} />
+                  {unread > 0 && <span className="ml-bell-badge">{unread > 9 ? "9+" : unread}</span>}
+                </button>
+                {notifOpen && (
+                  <div className="ml-notif-panel" role="menu">
+                    <div className="ml-notif-head">
+                      <span>Notifications</span>
+                      {notifs && notifs.some((n) => !n.is_read) && (
+                        <button type="button" className="ml-notif-readall" onClick={markAllRead}>
+                          <Check size={13} /> Tout marquer comme lu
+                        </button>
+                      )}
+                    </div>
+                    <div className="ml-notif-list">
+                      {notifs === null ? (
+                        <div className="ml-notif-empty">Chargement…</div>
+                      ) : notifs.length === 0 ? (
+                        <div className="ml-notif-empty">
+                          <Inbox size={22} />
+                          <span>Aucune notification pour le moment.</span>
+                        </div>
+                      ) : (
+                        notifs.map((n) => {
+                          const Icon = NOTIF_ICON[n.type] ?? Bell;
+                          return (
+                            <button
+                              type="button"
+                              key={n.id}
+                              className={`ml-notif-item ${n.is_read ? "" : "unread"}`}
+                              onClick={() => openNotification(n)}
+                            >
+                              <span className="ml-notif-ic"><Icon size={16} /></span>
+                              <span className="ml-notif-body">
+                                <span className="ml-notif-title">{n.title}</span>
+                                {n.message && <span className="ml-notif-msg">{n.message}</span>}
+                                <span className="ml-notif-time">{timeAgo(n.created_at)}</span>
+                              </span>
+                              {!n.is_read && <span className="ml-notif-dot" />}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
               <span className="ml-top-sep" />
               <div className="ml-top-date">
                 <span>{day.charAt(0).toUpperCase() + day.slice(1)}</span>

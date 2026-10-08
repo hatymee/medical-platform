@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import require_role
-from app.models.models import User, Doctor, Patient, Appointment, AppointmentStatus, NotificationType
+from app.models.models import User, Doctor, Patient, Secretary, Clinic, Appointment, AppointmentStatus, NotificationType
 from app.core.notify import notify
 from app.schemas.schemas import (
     AppointmentCreate,
@@ -83,6 +83,28 @@ def create_appointment(
         f"le {payload.scheduled_at:%d/%m/%Y à %H:%M}.",
         link="/doctor/dashboard",
     )
+
+    # Le secrétariat et l'administrateur du cabinet doivent aussi savoir qu'un patient
+    # a pris rendez-vous en ligne, pour pouvoir le confirmer ou le préparer.
+    if doctor.clinic_id:
+        patient_name = f"{current_user.patient.first_name} {current_user.patient.last_name}"
+        when = f"{payload.scheduled_at:%d/%m/%Y à %H:%M}"
+        for sec in db.query(Secretary).filter(Secretary.clinic_id == doctor.clinic_id).all():
+            notify(
+                db, sec.user_id, NotificationType.appointment_created,
+                "Nouveau rendez-vous en ligne",
+                f"{patient_name} a pris rendez-vous avec Dr. {doctor.first_name} {doctor.last_name} le {when}.",
+                link="rdv",
+            )
+        clinic = db.get(Clinic, doctor.clinic_id)
+        if clinic and clinic.admin_user_id:
+            notify(
+                db, clinic.admin_user_id, NotificationType.appointment_created,
+                "Nouveau rendez-vous en ligne",
+                f"{patient_name} a pris rendez-vous avec Dr. {doctor.first_name} {doctor.last_name} le {when}.",
+                link="/admin",
+            )
+
     db.commit()
     db.refresh(appointment)
     return appointment
